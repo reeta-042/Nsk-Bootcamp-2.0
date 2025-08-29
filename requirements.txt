@@ -1,3 +1,27 @@
+# Core Web Framework
 fastapi
 uvicorn
+
+# AI & Machine Learning Libraries
+langchain
+langchain-groq
+langchain-google-genai
+langchain-community
+
+# Vector Search Library (Facebook AI Similarity Search)
+faiss-cpu
+
+# Sentence Transformers (for creating embeddings)
+sentence-transformers
+
+# Database Connector for MongoDB
+pymongo
+
+# Media & Image Hosting
+cloudinary
+
+# HTTP Client (for making API calls to MapTiler)
+httpx
+
+# Environment Variable Management
 python-dotenv
