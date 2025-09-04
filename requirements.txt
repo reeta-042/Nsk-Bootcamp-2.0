@@ -1,27 +1,30 @@
-# Core Web Framework
+# FastAPI and ASGI Server
 fastapi
 uvicorn
 
-# AI & Machine Learning Libraries
-langchain
-langchain-groq
-langchain-google-genai
-langchain-community
-
-# Vector Search Library (Facebook AI Similarity Search)
-faiss-cpu
-
-# Sentence Transformers (for creating embeddings)
-sentence-transformers
-
-# Database Connector for MongoDB
-pymongo
-
-# Media & Image Hosting
-cloudinary
-
-# HTTP Client (for making API calls to MapTiler)
-httpx
+# Pydantic (used by FastAPI for data validation)
+# Note: pydantic is often installed as a dependency of fastapi, but it's good practice to list it explicitly.
+pydantic
 
 # Environment Variable Management
 python-dotenv
+
+# Asynchronous HTTP Requests (for MapTiler API)
+httpx
+
+# Database Driver (for MongoDB)
+motor
+pymongo[srv]
+
+# AI and Machine Learning (Google Gemini and Vector Search)
+langchain-google-genai
+langchain
+faiss-cpu
+
+# Standard Data Handling
+# pickle is part of the standard library, so it doesn't need to be listed.
+# numpy is a dependency of faiss, but it's good practice to include it.
+numpy
+
+# For handling image uploads with FastAPI
+python-multipart
