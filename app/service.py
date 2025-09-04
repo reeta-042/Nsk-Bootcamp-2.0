@@ -23,11 +23,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Initialize the LLM and Embeddings models once to be reused
 # We use "gemini-pro" for chat/text generation
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=GEMINI_API_KEY)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
 # We use a specific embeddings model for converting text to vectors
 embeddings_model = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=GEMINI_API_KEY)
 # We use the vision model for image analysis
-vision_llm = ChatGoogleGenerativeAI(model="gemini-pro-vision", google_api_key=GEMINI_API_KEY)
+vision_llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=GEMINI_API_KEY)
 
 
 # ==============================================================================
