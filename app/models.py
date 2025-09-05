@@ -52,7 +52,8 @@ class JourneyResponse(BaseModel):
     structured_narrative: JourneyNarrative
     route_data: dict # This will hold the full, raw JSON response from the MapTiler API.
     
-     ==============================================================================
+
+#==============================================================================
 # 4. Models for User Preference & Reflection
 # ==============================================================================
 
