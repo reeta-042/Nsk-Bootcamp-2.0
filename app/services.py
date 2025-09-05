@@ -22,7 +22,7 @@ MAPTILER_API_KEY = os.getenv("MAPTILER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Initialize the LLM and Embeddings models once to be reused
-# We use "gemini-pro" for chat/text generation
+# We use "gemini-2.5-flash" for chat/text generation
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
 # We use a specific embeddings model for converting text to vectors
 embeddings_model = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=GEMINI_API_KEY)
