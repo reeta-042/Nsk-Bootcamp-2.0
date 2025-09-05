@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import our own application modules
-from . import models
+from . import model
 from . import services
 from . import knowledge_base
 
