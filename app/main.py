@@ -6,7 +6,7 @@ import uvicorn
 
 # Import our own application modules
 from . import model
-from . import services
+from . import service
 from . import knowledge_base
 
 # --- Application Initialization ---
