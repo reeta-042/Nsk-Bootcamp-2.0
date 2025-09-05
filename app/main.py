@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import our own application modules
@@ -18,6 +19,21 @@ app = FastAPI(
     title="UrbanScribe API",
     version="1.0.0",
     description="The backend service for UrbanScribe, the intelligent city storyteller.",
+)
+
+# --- CORS Configuration ---
+origins = [
+    "http://localhost",     
+    "http://localhost:3000", 
+    "http://localhost:8080", 
+    "http://localhost:5173", 
+    ]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # List of origins that are allowed to make requests
+    allow_credentials=True, # Allows cookies to be included in requests (useful for auth)
+    allow_methods=["*"],    # Allows all methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],    # Allows all headers
 )
 
 
