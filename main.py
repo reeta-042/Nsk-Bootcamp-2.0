@@ -8,7 +8,7 @@ from streamlit_folium import st_folium
 import folium
 from streamlit_js_eval import get_geolocation
 
-# --- GLOBAL EVENT LOOP SETUP (THE DEFINITIVE FIX) ---
+# --- GLOBAL EVENT LOOP SETUP ---
 nest_asyncio.apply()
 LOOP = asyncio.get_event_loop()
 
@@ -19,7 +19,7 @@ from app import services, models, knowledge_base
 # --- Page Configuration ---
 st.set_page_config(page_title="Hometown Atlas", page_icon="🌍", layout="wide", initial_sidebar_state="expanded")
 
-# --- Caching Functions (Now using the global LOOP) ---
+# --- Caching Functions (using the global LOOP) ---
 @st.cache_data(ttl=3600)
 def get_all_tags_from_db():
     try:
@@ -39,7 +39,7 @@ def get_filtered_pois_from_db(tags: List[str] = None, budget: str = None):
         st.error(f"Error fetching destinations: {e}")
         return {"Error fetching data": None}
 
-# --- Async Helper (This function is already async, so it doesn't need the loop directly) ---
+# --- Async Helper ---
 async def get_journey_data(request: models.JourneyRequest):
     try:
         destination_poi = await knowledge_base.get_poi_by_id(request.destination_poi_id)
@@ -57,8 +57,18 @@ async def get_journey_data(request: models.JourneyRequest):
         return None, None
 
 # --- Initialize Session State ---
-if 'user_id' not in st.session_state: st.session_state.user_id = "hackathon_user_01"
-# ... (rest of session state initialization is the same)
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = "hackathon_user_01"
+if 'start_location' not in st.session_state:
+    st.session_state.start_location = None
+if 'route_data' not in st.session_state:
+    st.session_state.route_data = None
+if 'narrative' not in st.session_state:
+    st.session_state.narrative = None
+if 'map_center' not in st.session_state:
+    st.session_state.map_center = [9.0765, 7.3986] # Default to Abuja, Nigeria
+if 'map_zoom' not in st.session_state:
+    st.session_state.map_zoom = 12
 
 # --- UI ---
 st.title("🌍 Hometown Atlas")
@@ -67,7 +77,6 @@ st.markdown("Your intelligent travel companion for discovering the rich, hidden 
 with st.sidebar:
     st.header("📍 Plan Your Journey")
     
-    # --- UI FIX: Use an expander for destination selection ---
     with st.expander("1. Choose Destination", expanded=True):
         st.subheader("Filter Options")
         budget_options = ["any", "free", "low", "medium", "high"]
@@ -101,7 +110,6 @@ with st.sidebar:
             lat, lon = st.session_state.start_location['latitude'], st.session_state.start_location['longitude']
             st.success(f"Start Location Set: ({lat:.4f}, {lon:.4f})")
 
-    # --- Create Journey Button ---
     if st.button("Create My Journey", type="primary", use_container_width=True):
         if not st.session_state.start_location:
             st.warning("Please set a starting point first.")
@@ -117,18 +125,16 @@ with st.sidebar:
                     query=query,
                     destination_poi_id=destination_poi_id
                 )
-                # Use the global LOOP to run the final async function
                 route_data, narrative = LOOP.run_until_complete(get_journey_data(request))
                 if route_data and narrative:
                     st.session_state.route_data = route_data
                     st.session_state.narrative = narrative
                     st.success("Your journey is ready!")
-                    # ... (rest of the logic is the same)
+                    start, end = route_data['waypoints'][0]['location'], route_data['waypoints'][1]['location']
+                    st.session_state.map_center = [(start[1] + end[1]) / 2, (start[0] + end[0]) / 2]
+                    st.session_state.map_zoom = 14
                     st.rerun()
 
-# --- Main Content (Map and Story) ---
-# This section remains unchanged as it was already correct.
-# ... (paste the map and story display code from the previous version here) ...
 st.subheader("Your Interactive Map")
 m = folium.Map(location=st.session_state.get('map_center', [9.0765, 7.3986]), zoom_start=st.session_state.get('map_zoom', 12), tiles="cartodbpositron")
 if st.session_state.start_location:
@@ -168,4 +174,4 @@ if st.session_state.narrative and st.session_state.route_data:
     st.success(f"**Fun Fact:** {narrative.fun_fact}")
 else:
     st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
-
+                    
