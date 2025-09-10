@@ -14,7 +14,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 @st.cache_resource
 def get_embeddings_model():
     """Initializes the Google Generative AI Embeddings model."""
-    return GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
+    return GoogleGenerativeAIEmbeddings(model="google-embedding-001", google_api_key=GEMINI_API_KEY)
 
 # --- Private Async Function ---
 async def _embed_query_async(query: str) -> list[float]:
