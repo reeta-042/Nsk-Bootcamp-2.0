@@ -47,7 +47,8 @@ async def get_journey_data(request: models.JourneyRequest):
         route_data, structured_narrative = await asyncio.gather(route_task, narrative_task)
         
         # Add destination POI to route_data for easy access
-        route_data['destination_poi'] = destination_poi
+        if route_data:
+            route_data['destination_poi'] = destination_poi
 
         return route_data, structured_narrative
 
@@ -60,7 +61,7 @@ async def get_journey_data(request: models.JourneyRequest):
 def get_all_pois_as_choices():
     """
     Fetches all Points of Interest to be used as destination choices.
-    In a real app, this would fetch from a database.
+    This is currently a placeholder.
     """
     # This is a placeholder. In a real app, you would call a function
     # from your knowledge_base or services module.
@@ -120,10 +121,9 @@ with st.sidebar:
             "latitude": location['coords']['latitude'],
             "longitude": location['coords']['longitude']
         }
-        # Center map on user's new location
         st.session_state.map_center = [location['coords']['latitude'], location['coords']['longitude']]
         st.session_state.map_zoom = 15
-        st.rerun() # Rerun to update the map with the new location
+        st.rerun()
 
     if st.session_state.start_location:
         lat = st.session_state.start_location['latitude']
@@ -134,25 +134,21 @@ with st.sidebar:
     if st.button("Create My Journey", type="primary", use_container_width=True):
         if st.session_state.start_location:
             with st.spinner("Crafting your personalized story... This may take a moment."):
-                # Prepare the request model
                 request = models.JourneyRequest(
                     user_id=st.session_state.user_id,
                     latitude=st.session_state.start_location['latitude'],
                     longitude=st.session_state.start_location['longitude'],
-                    city="Unknown", # City can be derived or requested if needed
+                    city="Unknown",
                     query=query,
                     destination_poi_id=destination_poi_id
                 )
                 
-                # Run the async data fetching function
                 route_data, narrative = asyncio.run(get_journey_data(request))
 
-                # Store results in session state
                 if route_data and narrative:
                     st.session_state.route_data = route_data
                     st.session_state.narrative = narrative
                     st.success("Your journey is ready!")
-                    # Center map on the new route
                     start = route_data['waypoints'][0]['location']
                     end = route_data['waypoints'][1]['location']
                     st.session_state.map_center = [(start[1] + end[1]) / 2, (start[0] + end[0]) / 2]
@@ -162,86 +158,82 @@ with st.sidebar:
             st.warning("Please set a starting point by enabling location or clicking the map.")
 
 
-# --- Main Content: Map and Story ---
-map_col, story_col = st.columns([3, 2]) # Give more space to the map
+# --- Main Content: Map and Story (NEW STACKED LAYOUT) ---
 
-with map_col:
-    st.subheader("Your Interactive Map")
+st.subheader("Your Interactive Map")
+m = folium.Map(
+    location=st.session_state.map_center,
+    zoom_start=st.session_state.map_zoom,
+    tiles="cartodbpositron"
+)
 
-    # Create a Folium map centered on the session state location
-    m = folium.Map(
-        location=st.session_state.map_center,
-        zoom_start=st.session_state.map_zoom,
-        tiles="cartodbpositron"
-    )
+# Add a marker for the start location
+if st.session_state.start_location:
+    folium.Marker(
+        [st.session_state.start_location['latitude'], st.session_state.start_location['longitude']],
+        popup="Your Starting Point",
+        tooltip="Start",
+        icon=folium.Icon(color="blue", icon="play")
+    ).add_to(m)
 
-    # Add a marker for the start location
-    if st.session_state.start_location:
+# Draw the route and destination marker if data is available
+if st.session_state.route_data:
+    try:
+        dest_poi = st.session_state.route_data['destination_poi']
+        dest_loc = dest_poi['location']['coordinates']
         folium.Marker(
-            [st.session_state.start_location['latitude'], st.session_state.start_location['longitude']],
-            popup="Your Starting Point",
-            tooltip="Start",
-            icon=folium.Icon(color="blue", icon="play")
+            [dest_loc[1], dest_loc[0]],
+            popup=dest_poi['name'],
+            tooltip="Destination",
+            icon=folium.Icon(color="green", icon="flag")
         ).add_to(m)
 
-    # Draw the route and destination marker if data is available
-    if st.session_state.route_data:
-        try:
-            # Add destination marker
-            dest_poi = st.session_state.route_data['destination_poi']
-            dest_loc = dest_poi['location']['coordinates']
-            folium.Marker(
-                [dest_loc[1], dest_loc[0]], # Folium uses (lat, lon)
-                popup=dest_poi['name'],
-                tooltip="Destination",
-                icon=folium.Icon(color="green", icon="flag")
-            ).add_to(m)
+        points = st.session_state.route_data['routes'][0]['geometry']['coordinates']
+        swapped_points = [(p[1], p[0]) for p in points]
+        folium.PolyLine(swapped_points, color="#FF0000", weight=4, opacity=0.8).add_to(m)
+    except (KeyError, IndexError) as e:
+        st.warning(f"Could not display the full route on the map. Error: {e}")
 
-            # Draw the walking path
-            points = st.session_state.route_data['routes'][0]['geometry']['coordinates']
-            swapped_points = [(p[1], p[0]) for p in points] # Swap (lon, lat) to (lat, lon)
-            folium.PolyLine(swapped_points, color="#FF0000", weight=4, opacity=0.8).add_to(m)
+# Display the map and capture clicks
+map_data = st_folium(m, width='100%', height=450, returned_objects=[])
 
-        except (KeyError, IndexError) as e:
-            st.warning(f"Could not display the full route on the map. Error: {e}")
+# Update start location if map is clicked
+if map_data and map_data.get("last_clicked"):
+    clicked_coords = map_data["last_clicked"]
+    st.session_state.start_location = {
+        "latitude": clicked_coords['lat'],
+        "longitude": clicked_coords['lng']
+    }
+    st.rerun()
 
-    # Display the map and capture clicks
-    map_data = st_folium(m, width='100%', height=500, returned_objects=[])
+st.divider() # Visual separator
 
-    # Update start location if map is clicked
-    if map_data and map_data.get("last_clicked"):
-        clicked_coords = map_data["last_clicked"]
-        st.session_state.start_location = {
-            "latitude": clicked_coords['lat'],
-            "longitude": clicked_coords['lng']
-        }
-        st.rerun() # Rerun to update the start marker and text
-
-with story_col:
-    st.subheader("Your Generated Journey")
-
-    if st.session_state.narrative and st.session_state.route_data:
-        narrative = st.session_state.narrative
-        route_data = st.session_state.route_data
-        
-        # Display walk time and distance
-        try:
+# Display the generated journey details below the map
+st.subheader("Your Generated Journey")
+if st.session_state.narrative and st.session_state.route_data:
+    narrative = st.session_state.narrative
+    route_data = st.session_state.route_data
+    
+    # Use columns for a neat, horizontal display of metrics
+    metric1, metric2 = st.columns(2)
+    try:
+        with metric1:
             duration_min = route_data['routes'][0]['duration'] / 60
-            distance_km = route_data['routes'][0]['distance'] / 1000
             st.metric(label="🚶‍♀️ Est. Walk Time", value=f"{duration_min:.0f} minutes")
+        with metric2:
+            distance_km = route_data['routes'][0]['distance'] / 1000
             st.metric(label="📏 Distance", value=f"{distance_km:.2f} km")
-        except (KeyError, IndexError):
-            st.info("Route metrics are not available.")
+    except (KeyError, IndexError):
+        st.info("Route metrics are not available.")
 
-        st.divider()
+    st.divider()
 
-        # Display the AI-generated narrative
-        st.subheader(narrative.title)
-        st.markdown(f"**Awareness:** *{narrative.location_awareness}*")
-        st.info(narrative.narrative)
-        st.success(f"**Fun Fact:** {narrative.fun_fact}")
+    # Display the AI-generated narrative
+    st.subheader(narrative.title)
+    st.markdown(f"**Awareness:** *{narrative.location_awareness}*")
+    st.info(narrative.narrative)
+    st.success(f"**Fun Fact:** {narrative.fun_fact}")
 
-    else:
-        st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
-
-            
+else:
+    st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
+    
