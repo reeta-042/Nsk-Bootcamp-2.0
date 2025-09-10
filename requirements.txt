@@ -1,34 +1,31 @@
-# FastAPI and ASGI Server
-fastapi
-uvicorn
+# --- Core Web Application ---
+streamlit
 
-# Pydantic (used by FastAPI for data validation)
-# Note: pydantic is often installed as a dependency of fastapi, but it's good practice to list it explicitly.
+# --- Interactive Map ---
+folium
+streamlit-folium
+
+# --- Browser-side functionality ---
+streamlit-js-eval
+
+# --- Data Validation and Models ---
 pydantic
 
-# Environment Variable Management
+# --- Environment Variable Management ---
 python-dotenv
 
-# Asynchronous HTTP Requests (for MapTiler API)
+# --- Asynchronous HTTP Requests (for MapTiler API) ---
 httpx
 
-# Database Driver (for MongoDB)
+# --- Database Driver (for MongoDB Knowledge Base) ---
 motor
 pymongo[srv]
 
-# AI and Machine Learning (Google Gemini and Vector Search)
-langchain-google-genai
+# --- AI and Machine Learning (Google Gemini and Vector Search) ---
 langchain
+langchain-google-genai
 faiss-cpu
 
-# Standard Data Handling
-# pickle is part of the standard library, so it doesn't need to be listed.
-# numpy is a dependency of faiss, but it's good practice to include it.
-numpy
-
-# For handling image uploads with FastAPI
-python-multipart
-streamlit
+# --- Data Handling ---
 pandas
-folium
-stramlit_folium
+numpy
