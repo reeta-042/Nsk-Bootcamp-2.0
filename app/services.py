@@ -25,13 +25,13 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 def get_llm():
     """Initializes and returns the Gemini Pro chat model."""
     print("--- Initializing Gemini Pro LLM ---")
-    return ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GEMINI_API_KEY)
+    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
 
 @st.cache_resource
 def get_embeddings_model():
     """Initializes and returns the Gemini embeddings model."""
     print("--- Initializing Gemini Embeddings Model ---")
-    return GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
+    return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=GEMINI_API_KEY)
 
 # ==============================================================================
 # 1. External Service Functions (MapTiler) - NOW SYNCHRONOUS & CORRECT URL
