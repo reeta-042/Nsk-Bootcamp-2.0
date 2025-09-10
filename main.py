@@ -22,6 +22,8 @@ def get_all_tags_from_db():
 @st.cache_data(ttl=60)
 def get_filtered_pois_from_db(city: str, tags: List[str] = None, budget: str = None):
     """Fetches POIs, now requiring a city to filter by."""
+    if not city:
+        return {"Please select a city first": None}
     pois_list = knowledge_base.get_all_pois(city=city, tags=tags, budget=budget)
     if not pois_list:
         return {"No destinations found in this city for these filters": None}
@@ -30,22 +32,27 @@ def get_filtered_pois_from_db(city: str, tags: List[str] = None, budget: str = N
 # --- Initialize Session State ---
 if 'user_id' not in st.session_state: st.session_state.user_id = "hackathon_user_01"
 if 'start_location' not in st.session_state: st.session_state.start_location = None
-if 'current_city' not in st.session_state: st.session_state.current_city = None
 if 'route_data' not in st.session_state: st.session_state.route_data = None
 if 'narrative' not in st.session_state: st.session_state.narrative = None
 if 'map_center' not in st.session_state: st.session_state.map_center = [9.0765, 7.3986]
-if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 12
+if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 6 # Zoom out to see countries
 
 # --- UI ---
-st.title("🌍 Hometown Atlas (v5 - Final)")
+st.title("🌍 Hometown Atlas (v6 - Manual City)")
 st.markdown("Your intelligent travel companion for discovering the rich, hidden stories of cities.")
 
 with st.sidebar:
     st.header("📍 Plan Your Journey")
 
-    # This expander now depends on the city being set first
-    with st.expander("1. Choose Destination", expanded=True):
-        if st.session_state.current_city:
+    # --- NEW: MANUAL CITY SELECTION ---
+    with st.expander("1. Select Your City", expanded=True):
+        # Providing the list of cities you requested
+        city_options = ["Enugu", "Nsukka", "Addis Ababa", "Nairobi"]
+        selected_city = st.selectbox("Choose your current city:", city_options, index=None, placeholder="Select a city...")
+
+    # This expander now depends on the city being selected
+    with st.expander("2. Choose Destination", expanded=True):
+        if selected_city:
             st.subheader("Filter Options")
             budget_options = ["any", "free", "low", "medium", "high"]
             selected_budget = st.selectbox("Budget Level:", budget_options)
@@ -55,26 +62,24 @@ with st.sidebar:
             st.divider()
             
             poi_choices = get_filtered_pois_from_db(
-                city=st.session_state.current_city, 
+                city=selected_city, 
                 tags=selected_tags, 
                 budget=selected_budget
             )
             destination_name = st.selectbox("Available Destinations:", options=list(poi_choices.keys()))
             destination_poi_id = poi_choices.get(destination_name)
         else:
-            st.warning("Waiting for your location to show available destinations...")
+            st.warning("Please select your city above to see destinations.")
             destination_poi_id = None
 
-    with st.expander("2. Describe Your Journey", expanded=True):
+    with st.expander("3. Describe Your Journey", expanded=True):
         query = st.text_area("What kind of journey are you looking for?", placeholder="e.g., A quiet walk with historical significance.", height=100)
     
-    with st.expander("3. Set Your Start Location", expanded=True):
+    with st.expander("4. Set Your Start Location", expanded=True):
         st.info("Your browser location is used as a starting point. You can also click the map to set a new start.")
         location = get_geolocation()
         if location and not st.session_state.start_location:
             st.session_state.start_location = {"latitude": location['coords']['latitude'], "longitude": location['coords']['longitude']}
-            user_city = services.get_city_from_coords(lon=location['coords']['longitude'], lat=location['coords']['latitude'])
-            st.session_state.current_city = user_city
             st.session_state.map_center = [location['coords']['latitude'], location['coords']['longitude']]
             st.session_state.map_zoom = 15
             st.rerun()
@@ -82,12 +87,12 @@ with st.sidebar:
         if st.session_state.start_location:
             lat, lon = st.session_state.start_location['latitude'], st.session_state.start_location['longitude']
             st.success(f"Start Location Set: ({lat:.4f}, {lon:.4f})")
-            if st.session_state.current_city:
-                st.success(f"Current City: {st.session_state.current_city}")
 
     if st.button("Create My Journey", type="primary", use_container_width=True):
-        if not st.session_state.start_location:
-            st.warning("Please set a starting point first.")
+        if not selected_city:
+            st.warning("Please select your city first.")
+        elif not st.session_state.start_location:
+            st.warning("Please set a starting point (click the map or allow browser location).")
         elif not destination_poi_id:
             st.warning("Please select a valid destination.")
         else:
@@ -99,7 +104,7 @@ with st.sidebar:
                     
                     request = models.JourneyRequest(
                         user_id=st.session_state.user_id, latitude=start_lat_rounded, longitude=start_lon_rounded,
-                        city=st.session_state.current_city, query=query, destination_poi_id=destination_poi_id
+                        city=selected_city, query=query, destination_poi_id=destination_poi_id
                     )
                     
                     destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
@@ -127,7 +132,6 @@ with st.sidebar:
                     traceback.print_exc()
 
 # --- Main Content (Map and Story) ---
-# This section remains the same as the last correct version.
 st.subheader("Your Interactive Map")
 m = folium.Map(location=st.session_state.get('map_center'), zoom_start=st.session_state.get('map_zoom'), tiles="cartodbpositron")
 if st.session_state.start_location:
@@ -167,4 +171,4 @@ if st.session_state.narrative and st.session_state.route_data:
     st.success(f"**Fun Fact:** *{narrative.fun_fact}*")
 else:
     st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
-                        
+            
