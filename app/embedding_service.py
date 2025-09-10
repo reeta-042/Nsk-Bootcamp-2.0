@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import streamlit as st
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-# THIS IS THE NEW IMPORT FOR THE FIX
+# This import is still needed for the fix
 from google.auth.credentials import AnonymousCredentials
 
 # Load environment variables
@@ -19,26 +19,23 @@ def get_embeddings_model():
     """
     Initializes the Google Generative AI Embeddings model.
     
-    THE FIX: We pass 'AnonymousCredentials' to prevent the library from
-    trying to find default credentials on the system, which causes a timeout
-    on Streamlit Cloud. It will now ONLY use the 'google_api_key'.
+    THE FINAL FIX: We pass 'AnonymousCredentials' directly as a top-level
+    argument. This prevents the library from trying to find default credentials
+    on the system, which causes the timeout on Streamlit Cloud.
     """
     return GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001",
+        model="models/embedding-001",
         google_api_key=GEMINI_API_KEY,
-        client_options={"credentials": AnonymousCredentials()} # <-- THE FIX
+        credentials=AnonymousCredentials() # <-- THE FIX IS NOW HERE
     )
 
 # --- Private Async Function ---
 async def _embed_query_async(query: str) -> list[float]:
     """
-
     A dedicated async function to run the problematic embedding model
     within a controlled event loop.
     """
     embeddings_model = get_embeddings_model()
-    # The embed_query method itself is synchronous, but the model's initialization
-    # requires an event loop, which is why we wrap it like this.
     return embeddings_model.embed_query(query)
 
 # --- Public Synchronous Function ---
@@ -49,12 +46,10 @@ def get_query_embedding(query: str) -> list[float]:
     """
     print("--- DEBUG: Running embedding function via embedding_service...")
     try:
-        # Use asyncio.run() to create and manage the event loop
         embedding = asyncio.run(_embed_query_async(query))
         print("--- DEBUG: Embedding created successfully.")
         return embedding
     except Exception as e:
         print(f"--- FATAL ERROR: Failed to create embedding in embedding_service. Error: {e}")
-        # Re-raise the exception to notify the caller
         raise
         
