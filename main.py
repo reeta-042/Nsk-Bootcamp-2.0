@@ -14,58 +14,67 @@ from app import services, models, knowledge_base
 # --- Page Configuration ---
 st.set_page_config(page_title="Hometown Atlas", page_icon="🌍", layout="wide", initial_sidebar_state="expanded")
 
-# --- Caching Functions (Calling sync knowledge_base functions) ---
+# --- Caching Functions ---
 @st.cache_data(ttl=3600)
 def get_all_tags_from_db():
     return knowledge_base.get_unique_tags()
 
 @st.cache_data(ttl=60)
-def get_filtered_pois_from_db(tags: List[str] = None, budget: str = None):
-    pois_list = knowledge_base.get_all_pois(tags=tags, budget=budget)
+def get_filtered_pois_from_db(city: str, tags: List[str] = None, budget: str = None):
+    """Fetches POIs, now requiring a city to filter by."""
+    pois_list = knowledge_base.get_all_pois(city=city, tags=tags, budget=budget)
     if not pois_list:
-        return {"No destinations found for these filters": None}
+        return {"No destinations found in this city for these filters": None}
     return {poi['name']: poi['_id'] for poi in pois_list}
 
 # --- Initialize Session State ---
 if 'user_id' not in st.session_state: st.session_state.user_id = "hackathon_user_01"
 if 'start_location' not in st.session_state: st.session_state.start_location = None
+if 'current_city' not in st.session_state: st.session_state.current_city = None
 if 'route_data' not in st.session_state: st.session_state.route_data = None
 if 'narrative' not in st.session_state: st.session_state.narrative = None
 if 'map_center' not in st.session_state: st.session_state.map_center = [9.0765, 7.3986]
 if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 12
 
 # --- UI ---
-st.title("🌍 Hometown Atlas (v3)") # Version bump to force refresh
+st.title("🌍 Hometown Atlas (v5 - Final)")
 st.markdown("Your intelligent travel companion for discovering the rich, hidden stories of cities.")
 
 with st.sidebar:
     st.header("📍 Plan Your Journey")
-    
+
+    # This expander now depends on the city being set first
     with st.expander("1. Choose Destination", expanded=True):
-        st.subheader("Filter Options")
-        budget_options = ["any", "free", "low", "medium", "high"]
-        selected_budget = st.selectbox("Budget Level:", budget_options)
-        all_tags = get_all_tags_from_db()
-        selected_tags = st.multiselect("Interests / Tags:", all_tags)
-        
-        st.divider()
-        
-        poi_choices = get_filtered_pois_from_db(tags=selected_tags, budget=selected_budget)
-        destination_name = st.selectbox("Available Destinations:", options=list(poi_choices.keys()))
-        destination_poi_id = poi_choices.get(destination_name)
+        if st.session_state.current_city:
+            st.subheader("Filter Options")
+            budget_options = ["any", "free", "low", "medium", "high"]
+            selected_budget = st.selectbox("Budget Level:", budget_options)
+            all_tags = get_all_tags_from_db()
+            selected_tags = st.multiselect("Interests / Tags:", all_tags)
+            
+            st.divider()
+            
+            poi_choices = get_filtered_pois_from_db(
+                city=st.session_state.current_city, 
+                tags=selected_tags, 
+                budget=selected_budget
+            )
+            destination_name = st.selectbox("Available Destinations:", options=list(poi_choices.keys()))
+            destination_poi_id = poi_choices.get(destination_name)
+        else:
+            st.warning("Waiting for your location to show available destinations...")
+            destination_poi_id = None
 
     with st.expander("2. Describe Your Journey", expanded=True):
-        query = st.text_area(
-            "What kind of journey are you looking for?",
-            placeholder="e.g., A quiet walk with historical significance.",
-            height=100
-        )
+        query = st.text_area("What kind of journey are you looking for?", placeholder="e.g., A quiet walk with historical significance.", height=100)
     
     with st.expander("3. Set Your Start Location", expanded=True):
         st.info("Your browser location is used as a starting point. You can also click the map to set a new start.")
         location = get_geolocation()
         if location and not st.session_state.start_location:
             st.session_state.start_location = {"latitude": location['coords']['latitude'], "longitude": location['coords']['longitude']}
+            user_city = services.get_city_from_coords(lon=location['coords']['longitude'], lat=location['coords']['latitude'])
+            st.session_state.current_city = user_city
             st.session_state.map_center = [location['coords']['latitude'], location['coords']['longitude']]
             st.session_state.map_zoom = 15
             st.rerun()
@@ -73,6 +82,8 @@ with st.sidebar:
         if st.session_state.start_location:
             lat, lon = st.session_state.start_location['latitude'], st.session_state.start_location['longitude']
             st.success(f"Start Location Set: ({lat:.4f}, {lon:.4f})")
+            if st.session_state.current_city:
+                st.success(f"Current City: {st.session_state.current_city}")
 
     if st.button("Create My Journey", type="primary", use_container_width=True):
         if not st.session_state.start_location:
@@ -82,23 +93,23 @@ with st.sidebar:
         else:
             with st.spinner("Crafting your personalized story..."):
                 try:
+                    # Rounding coordinates to 5 decimal places to fix MapTiler API bug
+                    start_lat_rounded = round(st.session_state.start_location['latitude'], 5)
+                    start_lon_rounded = round(st.session_state.start_location['longitude'], 5)
+                    
                     request = models.JourneyRequest(
-                        user_id=st.session_state.user_id,
-                        latitude=st.session_state.start_location['latitude'],
-                        longitude=st.session_state.start_location['longitude'],
-                        city="Unknown",
-                        query=query,
-                        destination_poi_id=destination_poi_id
+                        user_id=st.session_state.user_id, latitude=start_lat_rounded, longitude=start_lon_rounded,
+                        city=st.session_state.current_city, query=query, destination_poi_id=destination_poi_id
                     )
                     
-                    # --- CALLING ALL FUNCTIONS SYNCHRONOUSLY ---
                     destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
                     if not destination_poi:
                         st.error(f"Could not find destination with ID: {request.destination_poi_id}")
                     else:
-                        end_lon, end_lat = destination_poi['location']['coordinates']
+                        end_lon_rounded = round(destination_poi['location']['coordinates'][0], 5)
+                        end_lat_rounded = round(destination_poi['location']['coordinates'][1], 5)
                         
-                        route_data = services.get_route_from_maptiler(request.longitude, request.latitude, end_lon, end_lat)
+                        route_data = services.get_route_from_maptiler(request.longitude, request.latitude, end_lon_rounded, end_lat_rounded)
                         narrative = services.generate_narrative_with_rag(request)
                         
                         if route_data and narrative:
@@ -106,20 +117,19 @@ with st.sidebar:
                             st.session_state.route_data = route_data
                             st.session_state.narrative = narrative
                             st.success("Your journey is ready!")
-                            
                             start, end = route_data['waypoints'][0]['location'], route_data['waypoints'][1]['location']
                             st.session_state.map_center = [(start[1] + end[1]) / 2, (start[0] + end[0]) / 2]
                             st.session_state.map_zoom = 14
                             st.rerun()
-
                 except Exception as e:
                     st.error(f"An error occurred while creating your journey: {e}")
                     print(f"ERROR in Create My Journey button: {e}")
                     traceback.print_exc()
 
 # --- Main Content (Map and Story) ---
+# This section remains the same as the last correct version.
 st.subheader("Your Interactive Map")
-m = folium.Map(location=st.session_state.get('map_center', [9.0765, 7.3986]), zoom_start=st.session_state.get('map_zoom', 12), tiles="cartodbpositron")
+m = folium.Map(location=st.session_state.get('map_center'), zoom_start=st.session_state.get('map_zoom'), tiles="cartodbpositron")
 if st.session_state.start_location:
     folium.Marker([st.session_state.start_location['latitude'], st.session_state.start_location['longitude']], popup="Your Starting Point", tooltip="Start", icon=folium.Icon(color="blue", icon="play")).add_to(m)
 if st.session_state.route_data:
@@ -157,3 +167,4 @@ if st.session_state.narrative and st.session_state.route_data:
     st.success(f"**Fun Fact:** *{narrative.fun_fact}*")
 else:
     st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
+                        
