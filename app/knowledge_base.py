@@ -2,7 +2,6 @@ import os
 import pickle
 import faiss
 from pymongo import MongoClient
-from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
 from typing import List, Dict, Any
 import streamlit as st
@@ -14,21 +13,21 @@ DB_NAME = "Hackathon_Project"
 POI_COLLECTION_NAME = "NSK_AI"
 USER_COLLECTION_NAME = "users"
 
-# --- Database Client Initialization (Synchronous) ---
+# --- LAZY INITIALIZATION OF DATABASE CLIENT (Synchronous) ---
 @st.cache_resource
 def get_db_client():
     """Creates and caches a synchronous MongoDB client."""
-    print("--- Creating new SYNC MongoDB client connection ---")
+    print("--- Creating new MongoDB client connection ---")
     try:
-        client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
-        client.admin.command('ping')
-        print("✅ Successfully connected to MongoDB (sync).")
+        client = MongoClient(MONGO_URI)
+        client.admin.command('ping') # Check the connection
+        print("✅ Successfully connected to MongoDB.")
         return client
     except Exception as e:
-        print(f"❌ Error connecting to MongoDB (sync): {e}")
+        print(f"❌ Error connecting to MongoDB: {e}")
         return None
 
-# --- FAISS Index Loading ---
+# --- FAISS and Knowledge Base Loading ---
 try:
     faiss_index = faiss.read_index("faiss_index.bin")
     with open("data.pkl", "rb") as f:
@@ -39,66 +38,46 @@ except FileNotFoundError as e:
     faiss_index, knowledge_base_texts = None, None
 
 # ==============================================================================
-# POI and User Preference Functions (All Synchronous)
+# Point of Interest (POI) Functions
 # ==============================================================================
 
 def get_poi_by_id(poi_id: str) -> Dict[str, Any]:
-    """Fetches a single Point of Interest document from the database by its _id."""
+    """Fetches a single POI document from the database by its _id."""
     client = get_db_client()
     if client is None: return None
-    db = client[DB_NAME]
-    return db[POI_COLLECTION_NAME].find_one({"_id": poi_id})
+    return client[DB_NAME][POI_COLLECTION_NAME].find_one({"_id": poi_id})
 
-def get_all_pois(city: str = None, tags: List[str] = None, budget: str = None) -> List[Dict[str, Any]]:
-    """
-    Fetches a list of POIs, now with an essential filter for the city.
-    """
+# --- THIS IS THE MISSING FUNCTION ---
+def get_pois_by_city(city: str) -> Dict[str, str]:
+    """Fetches all POIs for a specific city and formats them for a dropdown."""
     client = get_db_client()
-    if client is None: return []
-    db = client[DB_NAME]
+    if client is None: return {}
     
-    query = {}
-    if city:
-        # Using a case-insensitive regex to match city names like 'Nsukka' or 'nsukka'
-        query["city"] = {"$regex": f"^{city}$", "$options": "i"}
-    if tags:
-        query["tags"] = {"$in": tags}
-    if budget and budget != "any":
-        query["budget_level"] = budget
-        
-    # Fetching only the name and _id fields for the dropdown
-    cursor = db[POI_COLLECTION_NAME].find(query, {"name": 1, "_id": 1})
-    return list(cursor)
+    query = {"city": city}
+    cursor = client[DB_NAME][POI_COLLECTION_NAME].find(query, {"name": 1, "_id": 1})
+    
+    # Create a dictionary like {"POI Name": "poi_id"}
+    poi_choices = {poi["name"]: poi["_id"] for poi in cursor}
+    return poi_choices
+# --- END OF FIX ---
 
-def get_unique_tags() -> List[str]:
-    """Fetches all unique tags from the POI collection."""
-    client = get_db_client()
-    if client is None: return []
-    db = client[DB_NAME]
-    return db[POI_COLLECTION_NAME].distinct("tags")
-
+# ==============================================================================
+# Vector Search / RAG Retrieval Functions
+# ==============================================================================
 def search_knowledge_base(query_embedding, k: int = 5) -> str:
-    """Searches the FAISS index for relevant text chunks."""
-    if not faiss_index or not knowledge_base_texts: return "Knowledge base is not available."
+    if not faiss_index or not knowledge_base_texts:
+        return "Knowledge base is not available."
     distances, indices = faiss_index.search(query_embedding, k)
     retrieved_chunks = [knowledge_base_texts[i] for i in indices[0]]
     context = "\n\n---\n\n".join(retrieved_chunks)
     return context
 
+# ==============================================================================
+# User Preference Functions
+# ==============================================================================
 def get_user_preferences(user_id: str) -> Dict[str, List[str]]:
-    """Fetches a user's preference profile."""
     client = get_db_client()
     if client is None: return {"likes": [], "dislikes": []}
-    db = client[DB_NAME]
-    user_profile = db[USER_COLLECTION_NAME].find_one({"_id": user_id})
-    if user_profile: return user_profile.get("preferences", {"likes": [], "dislikes": []})
-    return {"likes": [], "dislikes": []}
-
-def update_user_preferences(user_id: str, new_preferences: Dict[str, List[str]]):
-    """Updates a user's preference profile."""
-    client = get_db_client()
-    if client is None: return
-    db = client[DB_NAME]
-    db[USER_COLLECTION_NAME].update_one({"_id": user_id}, {"$set": {"preferences": new_preferences}}, upsert=True)
-    print(f"✅ Preferences updated for user: {user_id}")
+    user_profile = client[DB_NAME][USER_COLLECTION_NAME].find_one({"_id": user_id})
+    return user_profile.get("preferences", {"likes": [], "dislikes": []}) if user_profile else {"likes": [], "dislikes": []}
     
