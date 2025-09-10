@@ -23,13 +23,13 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 def get_llm():
     """Initializes and returns the Gemini Pro chat model."""
     print("--- Initializing Gemini Pro LLM ---")
-    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
+    return ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GEMINI_API_KEY)
 
 @st.cache_resource
 def get_embeddings_model():
     """Initializes and returns the Gemini embeddings model."""
     print("--- Initializing Gemini Embeddings Model ---")
-    return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=GEMINI_API_KEY)
+    return GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
 
 # ==============================================================================
 # Routing and Narrative Functions (All Synchronous)
@@ -37,23 +37,19 @@ def get_embeddings_model():
 
 def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_lat: float) -> Dict:
     """
-    Fetches a walking route from the OpenRouteService API.
-    This is the correct, working implementation.
+    Fetches a walking route from the OpenRouteService API with the corrected URL and headers.
     """
+    # --- THIS IS THE CORRECTED API CALL ---
     headers = {
         'Authorization': ORS_API_KEY,
-        'Content-Type': 'application/json'
+        'Accept': 'application/json, application/geo+json, application/gpx+xml, img/png; charset=utf-8',
+        'Content-Type': 'application/json; charset=utf-8'
     }
-    
-    body = {
-        "coordinates": [
-            [start_lon, start_lat],
-            [end_lon, end_lat]
-        ]
-    }
-    
+    body = {"coordinates": [[start_lon, start_lat], [end_lon, end_lat]]}
+    # The correct base URL for the directions endpoint
     ors_url = "https://api.openrouteservice.org/v2/directions/foot-walking"
-    
+    # --- END OF FIX ---
+
     print(f"DEBUG: Calling OpenRouteService URL: {ors_url}")
 
     try:
