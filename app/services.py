@@ -5,7 +5,7 @@ import base64
 import asyncio
 from typing import Dict, Any
 from dotenv import load_dotenv
-import streamlit as st # We can import streamlit here for caching
+import streamlit as st
 
 # Import our own modules
 from . import models
@@ -22,33 +22,23 @@ load_dotenv()
 MAPTILER_API_KEY = os.getenv("MAPTILER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# --- LAZY INITIALIZATION OF AI CLIENTS ---
-# This is the new pattern to prevent the event loop error.
-# We use Streamlit's cache to ensure each model is only loaded once.
-
+# --- LAZY INITIALIZATION OF AI CLIENTS (This part is correct) ---
 @st.cache_resource
 def get_llm():
-    """Initializes and returns the Gemini Pro chat model."""
-    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
+    return ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GEMINI_API_KEY)
 
 @st.cache_resource
 def get_embeddings_model():
-    """Initializes and returns the Gemini embeddings model."""
-    # This is the line that was causing the crash. Now it's safely inside a function.
-    return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=GEMINI_API_KEY)
+    return GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
 
 @st.cache_resource
 def get_vision_llm():
-    """Initializes and returns the Gemini Pro Vision model."""
-    return ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=GEMINI_API_KEY)
-
+    return ChatGoogleGenerativeAI(model="gemini-pro-vision", google_api_key=GEMINI_API_KEY)
 
 # ==============================================================================
-# 1. External Service Functions (MapTiler)
+# 1. External Service Functions (MapTiler) - CORRECT
 # ==============================================================================
-# (This function remains unchanged)
 async def get_route_from_maptiler(start_lon: float, start_lat: float, end_lon: float, end_lat: float) -> Dict:
-    # ... same code as before ...
     start_coords = f"{start_lon},{start_lat}"
     end_coords = f"{end_lon},{end_lat}"
     route_url = f"https://api.maptiler.com/routing/v1/foot?waypoints={start_coords};{end_coords}&steps=true&overview=full&key={MAPTILER_API_KEY}"
@@ -59,85 +49,104 @@ async def get_route_from_maptiler(start_lon: float, start_lat: float, end_lon: f
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            raise Exception(status_code=e.response.status_code, detail=f"MapTiler API error: {e.response.text}")
+            raise Exception(f"MapTiler API error: {e.response.text}")
         except httpx.RequestError as e:
-            raise Exception(status_code=503, detail=f"Could not connect to MapTiler service: {e}")
-
+            raise Exception(f"Could not connect to MapTiler service: {e}")
 
 # ==============================================================================
-# 2. Core Narrative Generation Functions (RAG)
+# 2. Core Narrative Generation Functions (RAG) - CORRECTED
 # ==============================================================================
-
 async def generate_narrative_with_rag(request: models.JourneyRequest) -> models.JourneyNarrative:
-    """
-    The main RAG pipeline to generate a personalized and context-aware journey narrative.
-    """
-    # --- MODIFICATION: Get models from the cached functions ---
     llm = get_llm()
     embeddings_model = get_embeddings_model()
     
-    # 1. Fetch User Preferences
-    user_prefs = await knowledge_base.get_user_preferences(request.user_id)
+    # --- FIX APPLIED HERE: Removed 'await' from the sync function call ---
+    user_prefs = knowledge_base.get_user_preferences(request.user_id)
     preferences_text = f"This user's known preferences are: Likes: {user_prefs.get('likes', [])}, Dislikes: {user_prefs.get('dislikes', [])}."
 
-    # 2. Create an Embedding of the User's Query
-    query_embedding = embeddings_model.embed_query(request.query)
+    # This part remains async, which is correct
+    query_embedding = await embeddings_model.aembed_query(request.query)
 
-    # (The rest of the function is the same)
-    # ...
+    # This part is sync, which is correct
     context = knowledge_base.search_knowledge_base(query_embedding=[query_embedding])
+    
     parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
-    prompt = f"""...""" # Your full prompt
+    
+    prompt = f"""
+    You are UrbanScribe, an intelligent city storyteller. Your task is to create a personalized journey narrative.
+    **User's Goal:** "{request.query}"
+    **User's Profile:** {preferences_text}
+    **Retrieved Context from Knowledge Base:**
+    {context}
+    ---
+    Based on ALL the information above, generate a compelling and tailored narrative for the user's journey.
+    The narrative should directly incorporate the user's preferences and the retrieved context.
+    **Output Instructions:**
+    {parser.get_format_instructions()}
+    """
+    
     try:
+        # This part is async, which is correct
         ai_response = await llm.ainvoke(prompt)
         parsed_response = parser.parse(ai_response.content)
         return parsed_response
     except ValidationError as e:
         print(f"LLM output validation error: {e}")
-        raise Exception(status_code=500, detail="Failed to generate a valid narrative from the AI model.")
-
+        raise Exception("Failed to generate a valid narrative from the AI model.")
 
 # ==============================================================================
-# 3. User Memory and Reflection Functions
+# 3. User Memory and Reflection Functions - CORRECTED
 # ==============================================================================
-
 async def reflect_and_update_preferences(request: models.ReflectionRequest):
-    """
-    Performs the reflection step to learn from user feedback and update their profile.
-    """
-    # --- MODIFICATION: Get model from the cached function ---
     llm = get_llm()
 
-    # (The rest of the function is the same)
-    # ...
-    current_prefs = await knowledge_base.get_user_preferences(request.user_id)
-    reflection_prompt = f"""...""" # Your full reflection prompt
+    # --- FIX APPLIED HERE: Removed 'await' from the sync function call ---
+    current_prefs = knowledge_base.get_user_preferences(request.user_id)
+    
+    reflection_prompt = f"""
+    You are a user preference analysis AI. Your job is to update a user's preference profile based on their recent activity.
+    **Current User Profile:** {current_prefs}
+    **User's Recent Activity:**
+    - Initial Query: "{request.original_query}"
+    - Journey Title: "{request.journey_title}"
+    - Feedback: "{request.user_feedback}"
+    ---
+    **Your Task:**
+    Analyze this interaction. Based on reasonable inferences, update the user's preference profile by adding or modifying their 'likes' and 'dislikes'.
+    For example, if the query was about 'quiet parks' and they 'liked' it, add 'quiet' and 'parks' to their likes.
+    **Respond ONLY with the updated JSON object for the 'preferences' field and nothing else.**
+    Example response: {{"likes": ["history", "quiet"], "dislikes": ["crowded"]}}
+    """
+    
     ai_response = await llm.ainvoke(reflection_prompt)
+    
     try:
         updated_prefs_data = json.loads(ai_response.content)
         validated_prefs = models.UserPreferences(**updated_prefs_data)
     except (json.JSONDecodeError, ValidationError) as e:
         print(f"Error: LLM returned invalid preference JSON for user {request.user_id}. Error: {e}")
         return
-    await knowledge_base.update_user_preferences(request.user_id, validated_prefs.dict())
-
+        
+    # --- FIX APPLIED HERE: Removed 'await' from the sync function call ---
+    knowledge_base.update_user_preferences(request.user_id, validated_prefs.dict())
 
 # ==============================================================================
-# 4. Image-Based Location Functions
+# 4. Image-Based Location Functions - CORRECTED
 # ==============================================================================
-
 async def get_location_from_image(image_file: Any) -> Dict[str, float]:
-    """
-    Analyzes an image using Gemini Vision to identify the landmark and return its coordinates.
-    """
-    # --- MODIFICATION: Get model from the cached function ---
     vision_llm = get_vision_llm()
 
-    # (The rest of the function is the same)
-    # ...
-    image_data = await image_file.read()
+    # The .read() method on Streamlit's UploadedFile is synchronous
+    image_data = image_file.read()
     base64_image = base64.b64encode(image_data).decode("utf-8")
-    vision_prompt = HumanMessage(...) # Your full vision prompt
+    
+    vision_prompt = HumanMessage(
+        content=[
+            {"type": "text", "text": "You are a world-class location identification expert. Look at this image. Identify the specific landmark, building, or monument shown. Based on your knowledge, what are the approximate latitude and longitude coordinates of this landmark? Respond ONLY with a valid JSON object containing 'latitude' and 'longitude' keys and nothing else. For example: {\"latitude\": 6.86, \"longitude\": 7.40}"},
+            {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64_image}"},
+        ]
+    )
+    
     try:
         ai_response = await vision_llm.ainvoke([vision_prompt])
         location_data = json.loads(ai_response.content)
@@ -146,5 +155,5 @@ async def get_location_from_image(image_file: Any) -> Dict[str, float]:
         return location_data
     except (json.JSONDecodeError, KeyError, ValidationError) as e:
         print(f"Error identifying location from image: {e}")
-        raise Exception(status_code=500, detail="Could not identify a valid location from the provided image.")
-        
+        raise Exception("Could not identify a valid location from the provided image.")
+    
