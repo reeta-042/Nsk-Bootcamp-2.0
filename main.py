@@ -150,7 +150,7 @@ st.divider()
 st.subheader("Your Generated Journey")
 if st.session_state.narrative and st.session_state.route_data:
     narrative, route_data = st.session_state.narrative, st.session_state.route_data
-    metric1, metric2 = st.columns(2.
+    metric1, metric2 = st.columns(2)
     try:
         with metric1:
             duration_min = route_data['routes'][0]['duration'] / 60
