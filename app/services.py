@@ -43,7 +43,7 @@ def get_route_from_maptiler(start_lon: float, start_lat: float, end_lon: float, 
     end_coords = f"{end_lon},{end_lat}"
     coordinates_path = f"{start_coords};{end_coords}"
     
-    base_url = f"https://api.maptiler.com/routes/foot-walking/{coordinates_path}"
+    base_url = f"https://api.maptiler.com/routes/car/{coordinates_path}"
     full_url = f"{base_url}?steps=true&overview=full&key={MAPTILER_API_KEY}"
     
     print(f"DEBUG: Final URL being called: {full_url}")
