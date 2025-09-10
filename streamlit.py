@@ -5,7 +5,7 @@ import os
 from streamlit_folium import st_folium
 import folium
 from streamlit_js_eval import get_geolocation
-
+from typing import List
 # --- Project Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 from app import services, models, knowledge_base
