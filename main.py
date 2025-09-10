@@ -1,16 +1,11 @@
 import streamlit as st
-import asyncio
-import nest_asyncio
 import sys
 import os
 from typing import List
 from streamlit_folium import st_folium
 import folium
 from streamlit_js_eval import get_geolocation
-
-# --- GLOBAL EVENT LOOP SETUP ---
-nest_asyncio.apply()
-LOOP = asyncio.get_event_loop()
+import asyncio # Still needed for the services part
 
 # --- Project Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
@@ -19,37 +14,37 @@ from app import services, models, knowledge_base
 # --- Page Configuration ---
 st.set_page_config(page_title="Hometown Atlas", page_icon="🌍", layout="wide", initial_sidebar_state="expanded")
 
-# --- Caching Functions (using the global LOOP) ---
+# --- Caching Functions (Now calling sync functions) ---
 @st.cache_data(ttl=3600)
 def get_all_tags_from_db():
-    try:
-        return LOOP.run_until_complete(knowledge_base.get_unique_tags())
-    except Exception as e:
-        st.error(f"Error fetching tags: {e}")
-        return []
+    return knowledge_base.get_unique_tags()
 
 @st.cache_data(ttl=60)
 def get_filtered_pois_from_db(tags: List[str] = None, budget: str = None):
-    try:
-        pois_list = LOOP.run_until_complete(knowledge_base.get_all_pois(tags=tags, budget=budget))
-        if not pois_list:
-            return {"No destinations found for these filters": None}
-        return {poi['name']: poi['_id'] for poi in pois_list}
-    except Exception as e:
-        st.error(f"Error fetching destinations: {e}")
-        return {"Error fetching data": None}
+    pois_list = knowledge_base.get_all_pois(tags=tags, budget=budget)
+    if not pois_list:
+        return {"No destinations found for these filters": None}
+    return {poi['name']: poi['_id'] for poi in pois_list}
 
-# --- Async Helper ---
+# --- Async Helper for services (MapTiler, Gemini) ---
+# This part still needs to be async because httpx and langchain are async
 async def get_journey_data(request: models.JourneyRequest):
     try:
-        destination_poi = await knowledge_base.get_poi_by_id(request.destination_poi_id)
+        # This part is now sync
+        destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
         if not destination_poi:
             st.error(f"Could not find destination with ID: {request.destination_poi_id}")
             return None, None
+        
         end_lon, end_lat = destination_poi['location']['coordinates']
+        
+        # These services are still async
         route_task = services.get_route_from_maptiler(request.longitude, request.latitude, end_lon, end_lat)
         narrative_task = services.generate_narrative_with_rag(request)
+        
+        # We still need to gather the async results
         route_data, structured_narrative = await asyncio.gather(route_task, narrative_task)
+        
         if route_data: route_data['destination_poi'] = destination_poi
         return route_data, structured_narrative
     except Exception as e:
@@ -57,20 +52,16 @@ async def get_journey_data(request: models.JourneyRequest):
         return None, None
 
 # --- Initialize Session State ---
-if 'user_id' not in st.session_state:
-    st.session_state.user_id = "hackathon_user_01"
-if 'start_location' not in st.session_state:
-    st.session_state.start_location = None
-if 'route_data' not in st.session_state:
-    st.session_state.route_data = None
-if 'narrative' not in st.session_state:
-    st.session_state.narrative = None
-if 'map_center' not in st.session_state:
-    st.session_state.map_center = [9.0765, 7.3986] # Default to Abuja, Nigeria
-if 'map_zoom' not in st.session_state:
-    st.session_state.map_zoom = 12
+if 'user_id' not in st.session_state: st.session_state.user_id = "hackathon_user_01"
+if 'start_location' not in st.session_state: st.session_state.start_location = None
+if 'route_data' not in st.session_state: st.session_state.route_data = None
+if 'narrative' not in st.session_state: st.session_state.narrative = None
+if 'map_center' not in st.session_state: st.session_state.map_center = [9.0765, 7.3986]
+if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 12
 
-# --- UI ---
+# --- UI (No changes needed here) ---
+# The entire UI section from your last version remains the same.
+# ... (paste the full UI code here) ...
 st.title("🌍 Hometown Atlas")
 st.markdown("Your intelligent travel companion for discovering the rich, hidden stories of cities.")
 
@@ -125,7 +116,8 @@ with st.sidebar:
                     query=query,
                     destination_poi_id=destination_poi_id
                 )
-                route_data, narrative = LOOP.run_until_complete(get_journey_data(request))
+                # We still need asyncio.run for the services part
+                route_data, narrative = asyncio.run(get_journey_data(request))
                 if route_data and narrative:
                     st.session_state.route_data = route_data
                     st.session_state.narrative = narrative
@@ -158,7 +150,7 @@ st.divider()
 st.subheader("Your Generated Journey")
 if st.session_state.narrative and st.session_state.route_data:
     narrative, route_data = st.session_state.narrative, st.session_state.route_data
-    metric1, metric2 = st.columns(2)
+    metric1, metric2 = st.columns(2.
     try:
         with metric1:
             duration_min = route_data['routes'][0]['duration'] / 60
@@ -174,4 +166,4 @@ if st.session_state.narrative and st.session_state.route_data:
     st.success(f"**Fun Fact:** {narrative.fun_fact}")
 else:
     st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
-                    
+                   
