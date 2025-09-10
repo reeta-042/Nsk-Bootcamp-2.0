@@ -5,7 +5,7 @@ from typing import List
 from streamlit_folium import st_folium
 import folium
 from streamlit_js_eval import get_geolocation
-import asyncio
+import traceback
 
 # --- Project Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
@@ -26,35 +26,6 @@ def get_filtered_pois_from_db(tags: List[str] = None, budget: str = None):
         return {"No destinations found for these filters": None}
     return {poi['name']: poi['_id'] for poi in pois_list}
 
-# --- Async Helper for services (MapTiler, Gemini) ---
-async def get_journey_data(request: models.JourneyRequest):
-    try:
-        destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
-        if not destination_poi:
-            st.error(f"Could not find destination with ID: {request.destination_poi_id}")
-            return None, None
-        
-        end_lon, end_lat = destination_poi['location']['coordinates']
-        
-        route_task = services.get_route_from_maptiler(request.longitude, request.latitude, end_lon, end_lat)
-        narrative_task = services.generate_narrative_with_rag(request)
-        
-        results = await asyncio.gather(route_task, narrative_task)
-        
-        route_data = results[0]
-        structured_narrative = results[1]
-        
-        if route_data:
-            route_data['destination_poi'] = destination_poi
-            
-        return route_data, structured_narrative
-    except Exception as e:
-        st.error(f"An error occurred in get_journey_data: {e}")
-        print(f"ERROR in get_journey_data: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, None
-
 # --- Initialize Session State ---
 if 'user_id' not in st.session_state: st.session_state.user_id = "hackathon_user_01"
 if 'start_location' not in st.session_state: st.session_state.start_location = None
@@ -64,7 +35,7 @@ if 'map_center' not in st.session_state: st.session_state.map_center = [9.0765, 
 if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 12
 
 # --- UI ---
-st.title("🌍 Hometown Atlas")
+st.title("🌍 Hometown Atlas (v3)") # Version bump to force refresh
 st.markdown("Your intelligent travel companion for discovering the rich, hidden stories of cities.")
 
 with st.sidebar:
@@ -110,23 +81,41 @@ with st.sidebar:
             st.warning("Please select a valid destination.")
         else:
             with st.spinner("Crafting your personalized story..."):
-                request = models.JourneyRequest(
-                    user_id=st.session_state.user_id,
-                    latitude=st.session_state.start_location['latitude'],
-                    longitude=st.session_state.start_location['longitude'],
-                    city="Unknown",
-                    query=query,
-                    destination_poi_id=destination_poi_id
-                )
-                route_data, narrative = asyncio.run(get_journey_data(request))
-                if route_data and narrative:
-                    st.session_state.route_data = route_data
-                    st.session_state.narrative = narrative
-                    st.success("Your journey is ready!")
-                    start, end = route_data['waypoints'][0]['location'], route_data['waypoints'][1]['location']
-                    st.session_state.map_center = [(start[1] + end[1]) / 2, (start[0] + end[0]) / 2]
-                    st.session_state.map_zoom = 14
-                    st.rerun()
+                try:
+                    request = models.JourneyRequest(
+                        user_id=st.session_state.user_id,
+                        latitude=st.session_state.start_location['latitude'],
+                        longitude=st.session_state.start_location['longitude'],
+                        city="Unknown",
+                        query=query,
+                        destination_poi_id=destination_poi_id
+                    )
+                    
+                    # --- CALLING ALL FUNCTIONS SYNCHRONOUSLY ---
+                    destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
+                    if not destination_poi:
+                        st.error(f"Could not find destination with ID: {request.destination_poi_id}")
+                    else:
+                        end_lon, end_lat = destination_poi['location']['coordinates']
+                        
+                        route_data = services.get_route_from_maptiler(request.longitude, request.latitude, end_lon, end_lat)
+                        narrative = services.generate_narrative_with_rag(request)
+                        
+                        if route_data and narrative:
+                            route_data['destination_poi'] = destination_poi
+                            st.session_state.route_data = route_data
+                            st.session_state.narrative = narrative
+                            st.success("Your journey is ready!")
+                            
+                            start, end = route_data['waypoints'][0]['location'], route_data['waypoints'][1]['location']
+                            st.session_state.map_center = [(start[1] + end[1]) / 2, (start[0] + end[0]) / 2]
+                            st.session_state.map_zoom = 14
+                            st.rerun()
+
+                except Exception as e:
+                    st.error(f"An error occurred while creating your journey: {e}")
+                    print(f"ERROR in Create My Journey button: {e}")
+                    traceback.print_exc()
 
 # --- Main Content (Map and Story) ---
 st.subheader("Your Interactive Map")
@@ -168,4 +157,3 @@ if st.session_state.narrative and st.session_state.route_data:
     st.success(f"**Fun Fact:** *{narrative.fun_fact}*")
 else:
     st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
-        
