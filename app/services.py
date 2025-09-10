@@ -15,11 +15,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 @st.cache_resource
 def get_llm():
-    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
+    return ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GEMINI_API_KEY)
 
 @st.cache_resource
 def get_embeddings_model():
-    return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=GEMINI_API_KEY)
+    return GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
 
 def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_lat: float) -> Dict:
     """Fetches a walking route from ORS with robust error handling and debugging."""
@@ -34,18 +34,15 @@ def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_l
     try:
         response = httpx.post(ors_url, headers=headers, json=body, timeout=20.0)
         
-        # --- ROBUST DEBUGGING ---
         print(f"--- ORS API RESPONSE ---")
         print(f"Status Code: {response.status_code}")
         print(f"Response Body: {response.text}")
         print(f"------------------------")
-        # --- END OF DEBUGGING ---
 
-        response.raise_for_for_status() # Check for HTTP errors like 401, 403, 404
+        # --- THE TYPO IS FIXED HERE ---
+        response.raise_for_status() # Corrected method name
         
         ors_data = response.json()
-        
-        # This is where the KeyError was happening
         route_info = ors_data['features'][0]['properties']['segments'][0]
         
         formatted_data = {
@@ -55,17 +52,13 @@ def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_l
         return formatted_data
         
     except httpx.HTTPStatusError as e:
-        # This will now include the actual error message from the API
         raise Exception(f"OpenRouteService API error: {e.response.text}")
     except (KeyError, IndexError) as e:
-        # This error happens if the response was successful but had an unexpected structure
         raise Exception(f"Could not parse route from OpenRouteService. Unexpected data structure. Error: {e}")
     except httpx.RequestError as e:
-        # This error happens if it can't connect to the server at all
         raise Exception(f"Could not connect to OpenRouteService: {e}")
 
 def generate_narrative_with_rag(request: models.JourneyRequest) -> models.JourneyNarrative:
-    # This function is correct and does not need changes
     llm = get_llm()
     embeddings_model = get_embeddings_model()
     user_prefs = knowledge_base.get_user_preferences(request.user_id)
