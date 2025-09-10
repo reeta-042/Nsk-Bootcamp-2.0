@@ -28,29 +28,47 @@ def get_filtered_pois_from_db(tags: List[str] = None, budget: str = None):
 
 # --- Async Helper for services (MapTiler, Gemini) ---
 async def get_journey_data(request: models.JourneyRequest):
+    """
+    This function now correctly separates sync and async calls.
+    """
     try:
-        # Sync call to the database
+        # --- STEP 1: Perform the SYNCHRONOUS database call first ---
+        # This function is NOT async and returns a dictionary directly.
         destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
+        
         if not destination_poi:
             st.error(f"Could not find destination with ID: {request.destination_poi_id}")
             return None, None
         
-        end_lon, end_lat = destination_poi['location']['coordinates']
+        end_lon = destination_poi['location']['coordinates'][0]
+        end_lat = destination_poi['location']['coordinates'][1]
         
-        # Create async tasks for external services
+        # --- STEP 2: Create the ASYNCHRONOUS tasks for external services ---
+        # These functions in services.py are async and return awaitable objects.
         route_task = services.get_route_from_maptiler(request.longitude, request.latitude, end_lon, end_lat)
         narrative_task = services.generate_narrative_with_rag(request)
         
-        # Await only the async tasks
-        route_data, structured_narrative = await asyncio.gather(route_task, narrative_task)
+        # --- STEP 3: Await the results of ONLY the async tasks ---
+        # We are NOT including the 'destination_poi' dict here.
+        results = await asyncio.gather(route_task, narrative_task)
         
-        # Add the sync data to the results
+        # Unpack the results from gather
+        route_data = results[0]
+        structured_narrative = results[1]
+        
+        # --- STEP 4: Combine the results ---
         if route_data:
             route_data['destination_poi'] = destination_poi
             
         return route_data, structured_narrative
+        
     except Exception as e:
-        st.error(f"An error occurred while creating your journey: {e}")
+        # This will now give us a more precise error if something inside fails.
+        st.error(f"An error occurred in get_journey_data: {e}")
+        # Also print to the console for more detail
+        print(f"ERROR in get_journey_data: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None
 
 # --- Initialize Session State ---
@@ -116,6 +134,7 @@ with st.sidebar:
                     query=query,
                     destination_poi_id=destination_poi_id
                 )
+                # Use asyncio.run for the top-level async function
                 route_data, narrative = asyncio.run(get_journey_data(request))
                 if route_data and narrative:
                     st.session_state.route_data = route_data
@@ -126,9 +145,10 @@ with st.sidebar:
                     st.session_state.map_zoom = 14
                     st.rerun()
 
+# --- Main Content (Map and Story) ---
 st.subheader("Your Interactive Map")
 m = folium.Map(location=st.session_state.get('map_center', [9.0765, 7.3986]), zoom_start=st.session_state.get('map_zoom', 12), tiles="cartodbpositron")
-if st.session_state.start_location:
+if st.session_state.start_.location:
     folium.Marker([st.session_state.start_location['latitude'], st.session_state.start_location['longitude']], popup="Your Starting Point", tooltip="Start", icon=folium.Icon(color="blue", icon="play")).add_to(m)
 if st.session_state.route_data:
     try:
@@ -165,3 +185,4 @@ if st.session_state.narrative and st.session_state.route_data:
     st.success(f"**Fun Fact:** *{narrative.fun_fact}*")
 else:
     st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
+                
