@@ -1,41 +1,35 @@
 import streamlit as st
 import asyncio
 import nest_asyncio
-nest_asyncio.apply() 
+
+nest_asyncio.apply()
+
 import sys
 import os
+from typing import List
 from streamlit_folium import st_folium
 import folium
 from streamlit_js_eval import get_geolocation
-from typing import List
 
-# --- Project Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 from app import services, models, knowledge_base
 
-# --- Page Configuration ---
-st.set_page_config(
-    page_title="Hometown Atlas",
-    page_icon="🌍",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Hometown Atlas", page_icon="🌍", layout="wide", initial_sidebar_state="expanded")
 
-# --- Caching Functions for Database Calls ---
-@st.cache_data(ttl=3600) # Cache for 1 hour
+@st.cache_data(ttl=3600)
 def get_all_tags_from_db():
-    """Fetches all unique tags from the database."""
     try:
-        return asyncio.run(knowledge_base.get_unique_tags())
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(knowledge_base.get_unique_tags())
     except Exception as e:
         st.error(f"Error fetching tags: {e}")
         return []
 
-@st.cache_data(ttl=60) # Cache for 1 minute
+@st.cache_data(ttl=60)
 def get_filtered_pois_from_db(tags: List[str] = None, budget: str = None):
-    """Fetches POIs based on filters and formats them for the selectbox."""
     try:
-        pois_list = asyncio.run(knowledge_base.get_all_pois(tags=tags, budget=budget))
+        loop = asyncio.get_event_loop()
+        pois_list = loop.run_until_complete(knowledge_base.get_all_pois(tags=tags, budget=budget))
         if not pois_list:
             return {"No destinations found for these filters": None}
         return {poi['name']: poi['_id'] for poi in pois_list}
@@ -43,9 +37,7 @@ def get_filtered_pois_from_db(tags: List[str] = None, budget: str = None):
         st.error(f"Error fetching destinations: {e}")
         return {"Error fetching data": None}
 
-# --- Async Helper for Journey Creation ---
 async def get_journey_data(request: models.JourneyRequest):
-    # This function remains the same as before...
     try:
         destination_poi = await knowledge_base.get_poi_by_id(request.destination_poi_id)
         if not destination_poi:
@@ -61,55 +53,40 @@ async def get_journey_data(request: models.JourneyRequest):
         st.error(f"An error occurred while creating your journey: {e}")
         return None, None
 
-# --- Initialize Session State ---
 if 'user_id' not in st.session_state: st.session_state.user_id = "hackathon_user_01"
 if 'start_location' not in st.session_state: st.session_state.start_location = None
 if 'route_data' not in st.session_state: st.session_state.route_data = None
 if 'narrative' not in st.session_state: st.session_state.narrative = None
-if 'map_center' not in st.session_state: st.session_state.map_center = [9.0765, 7.3986] # Default to Abuja
+if 'map_center' not in st.session_state: st.session_state.map_center = [9.0765, 7.3986]
 if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 12
 
-# --- UI: Main Title ---
 st.title("🌍 Hometown Atlas")
 st.markdown("Your intelligent travel companion for discovering the rich, hidden stories of cities.")
 
-# --- UI: Sidebar with LIVE DATA FILTERS ---
 with st.sidebar:
     st.header("📍 Plan Your Journey")
-
-    # --- NEW: Live Data Filters ---
     st.subheader("Filter Destinations")
     
-    # Budget Filter
     budget_options = ["any", "free", "low", "medium", "high"]
     selected_budget = st.selectbox("Budget Level:", budget_options)
 
-    # Tags Filter (Multi-select)
     all_tags = get_all_tags_from_db()
     selected_tags = st.multiselect("Interests / Tags:", all_tags)
 
     st.divider()
-
-    # --- Destination Dropdown (Now dynamic) ---
     st.subheader("Choose Destination")
     poi_choices = get_filtered_pois_from_db(tags=selected_tags, budget=selected_budget)
     
-    destination_name = st.selectbox(
-        "Available destinations:",
-        options=list(poi_choices.keys())
-    )
+    destination_name = st.selectbox("Available destinations:", options=list(poi_choices.keys()))
     destination_poi_id = poi_choices.get(destination_name)
 
-    # --- Journey Preference ---
     query = st.text_area(
         "What kind of journey are you looking for?",
-        "Show me an interesting and quiet walk.",
+        placeholder="e.g., Show me an interesting and quiet walk.",
         height=100
     )
     
     st.divider()
-
-    # --- Start Location and Create Button ---
     st.info("Your browser location is used as a starting point. You can also click the map to set a new start.")
     location = get_geolocation()
     if location and not st.session_state.start_location:
@@ -137,7 +114,8 @@ with st.sidebar:
                     query=query,
                     destination_poi_id=destination_poi_id
                 )
-                route_data, narrative = asyncio.run(get_journey_data(request))
+                loop = asyncio.get_event_loop()
+                route_data, narrative = loop.run_until_complete(get_journey_data(request))
                 if route_data and narrative:
                     st.session_state.route_data = route_data
                     st.session_state.narrative = narrative
@@ -147,9 +125,6 @@ with st.sidebar:
                     st.session_state.map_zoom = 14
                     st.rerun()
 
-# --- UI: Main Content (Map and Story) ---
-# This part of the code remains the same as the previous version.
-# It correctly displays the map and the journey details below it.
 st.subheader("Your Interactive Map")
 m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom, tiles="cartodbpositron")
 if st.session_state.start_location:
@@ -189,4 +164,4 @@ if st.session_state.narrative and st.session_state.route_data:
     st.success(f"**Fun Fact:** {narrative.fun_fact}")
 else:
     st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
-                    
+        
