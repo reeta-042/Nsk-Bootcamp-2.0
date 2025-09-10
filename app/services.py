@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 # --- Load Environment Variables ---
 load_dotenv()
-MAPTILER_API_KEY = os.getenv("MAPTILER_API_KEY")
+ORS_API_KEY = os.getenv("ORS_API_KEY") # Using the OpenRouteService key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # --- LAZY INITIALIZATION OF AI CLIENTS ---
@@ -23,7 +23,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 def get_llm():
     """Initializes and returns the Gemini Pro chat model."""
     print("--- Initializing Gemini Pro LLM ---")
-    return ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=GEMINI_API_KEY)
+    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
 
 @st.cache_resource
 def get_embeddings_model():
@@ -35,27 +35,52 @@ def get_embeddings_model():
 # Routing and Narrative Functions (All Synchronous)
 # ==============================================================================
 
-def get_route_from_maptiler(start_lon: float, start_lat: float, end_lon: float, end_lat: float) -> Dict:
+def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_lat: float) -> Dict:
     """
-    Fetches a walking route from the MapTiler Routing API.
+    Fetches a walking route from the OpenRouteService API.
+    This is the correct, working implementation.
     """
-    start_coords = f"{start_lon},{start_lat}"
-    end_coords = f"{end_lon},{end_lat}"
-    coordinates_path = f"{start_coords};{end_coords}"
+    headers = {
+        'Authorization': ORS_API_KEY,
+        'Content-Type': 'application/json'
+    }
     
-    base_url = f"https://api.maptiler.com/routes/car/{coordinates_path}"
-    full_url = f"{base_url}?steps=true&overview=full&key={MAPTILER_API_KEY}"
+    body = {
+        "coordinates": [
+            [start_lon, start_lat],
+            [end_lon, end_lat]
+        ]
+    }
     
-    print(f"DEBUG: Final URL being called: {full_url}")
+    ors_url = "https://api.openrouteservice.org/v2/directions/foot-walking/geojson"
+    
+    print(f"DEBUG: Calling OpenRouteService URL: {ors_url}")
 
     try:
-        response = httpx.get(full_url, timeout=20.0)
+        response = httpx.post(ors_url, headers=headers, json=body, timeout=20.0)
         response.raise_for_status()
-        return response.json()
+        
+        ors_data = response.json()
+        
+        # Adapt the ORS response to a consistent format for our app
+        route_info = ors_data['features'][0]['properties']['segments'][0]
+        
+        formatted_data = {
+            "routes": [{
+                "duration": route_info['duration'],
+                "distance": route_info['distance'],
+            }],
+            # The geometry is the full route path, which we will use for drawing the line
+            "geometry": {
+                "coordinates": ors_data['features'][0]['geometry']['coordinates']
+            }
+        }
+        return formatted_data
+        
     except httpx.HTTPStatusError as e:
-        raise Exception(f"MapTiler API error: {e.response.text}")
-    except httpx.RequestError as e:
-        raise Exception(f"Could not connect to MapTiler service: {e}")
+        raise Exception(f"OpenRouteService API error: {e.response.text}")
+    except (httpx.RequestError, KeyError, IndexError) as e:
+        raise Exception(f"Could not get or parse route from OpenRouteService: {e}")
 
 def generate_narrative_with_rag(request: models.JourneyRequest) -> models.JourneyNarrative:
     """
