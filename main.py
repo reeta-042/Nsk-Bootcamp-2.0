@@ -93,7 +93,7 @@ if st.session_state.route_data:
         swapped_points = [(p[1], p[0]) for p in points]
         folium.PolyLine(swapped_points, color="red", weight=5, opacity=0.8).add_to(m)
         folium.Marker(swapped_points[-1], popup="Your Destination", icon=folium.Icon(color="red", icon="flag")).add_to(m)
-        m.fit_bounds([swapped_points[0], swapped__points[-1]])
+        m.fit_bounds([swapped_points[0], swapped_points[-1]])
     except (KeyError, IndexError) as e:
         st.warning(f"Could not display route on map. Error: {e}")
 st_folium(m, width='100%', height=500, returned_objects=[])
