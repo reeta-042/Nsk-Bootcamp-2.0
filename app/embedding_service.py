@@ -4,8 +4,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 import streamlit as st
-from langchain_google import GoogleGenerativeAIEmbeddings
-
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 # Load environment variables
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
