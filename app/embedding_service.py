@@ -4,7 +4,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 import streamlit as st
-from langchain_goole import GoogleGenerativeAIEmbeddings
+from langchain_google import GoogleGenerativeAIEmbeddings
 
 # Load environment variables
 load_dotenv()
