@@ -1,6 +1,6 @@
 import streamlit as st
 import asyncio
-from app import services, models, knowledge_base
+from . import services, models, knowledge_base
 import pandas as pd
 
 # --- Page Configuration ---
