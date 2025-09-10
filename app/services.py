@@ -1,76 +1,125 @@
-import os
-import httpx
-from typing import Dict, Any
-from dotenv import load_dotenv
 import streamlit as st
+import folium
+from streamlit_folium import st_folium
+from streamlit_js_eval import get_geolocation
+import traceback
 
-from . import models, knowledge_base
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain.output_parsers import PydanticOutputParser
-from pydantic import ValidationError
+# Import our application modules
+from app import services, models, knowledge_base
 
-load_dotenv()
-ORS_API_KEY = os.getenv("ORS_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# --- Page Config ---
+st.set_page_config(page_title="Hometown Atlas", page_icon="🌍", layout="wide")
 
-@st.cache_resource
-def get_llm():
-    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
+# --- Session State Initialization ---
+if "start_location" not in st.session_state:
+    st.session_state.start_location = None
+if "map_center" not in st.session_state:
+    st.session_state.map_center = [6.855, 7.38] # Default center
+if "route_data" not in st.session_state:
+    st.session_state.route_data = None
+if "narrative" not in st.session_state:
+    st.session_state.narrative = None
+if "user_id" not in st.session_state:
+    st.session_state.user_id = "hackathon_user_01"
 
-@st.cache_resource
-def get_embeddings_model():
-    return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=GEMINI_API_KEY)
+# --- Sidebar for Controls ---
+with st.sidebar:
+    st.title("UrbanScribe")
+    st.markdown("Your AI-powered travel companion.")
 
-def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_lat: float) -> Dict:
-    """Fetches a walking route from ORS with robust error handling and debugging."""
-    headers = {
-        'Authorization': ORS_API_KEY,
-        'Accept': 'application/json, application/geo+json, application/gpx+xml, img/png; charset=utf-8',
-        'Content-Type': 'application/json; charset=utf-8'
-    }
-    body = {"coordinates": [[start_lon, start_lat], [end_lon, end_lat]]}
-    ors_url = "https://api.openrouteservice.org/v2/directions/foot-walking"
+    location = get_geolocation()
+    if location and not st.session_state.start_location:
+        st.session_state.start_location = location['coords']
+        st.session_state.map_center = [location['coords']['latitude'], location['coords']['longitude']]
+        st.rerun()
 
+    if st.session_state.start_location:
+        st.success(f"📍 Location Acquired!")
+    else:
+        st.info("Waiting for browser location...")
+
+    tab1, tab2 = st.tabs(["📍 Destination", "🎨 Journey Style"])
+    with tab1:
+        st.subheader("Where to?")
+        selected_city = st.selectbox("Select City/Region:", ("Nsukka", "Enugu", "Addis Ababa", "Nairobi"))
+        poi_choices = knowledge_base.get_pois_by_city(selected_city)
+        if poi_choices:
+            destination_name = st.selectbox("Choose Destination:", options=list(poi_choices.keys()))
+        else:
+            destination_name = None
+            st.warning(f"No destinations found for {selected_city}.")
+    with tab2:
+        st.subheader("What kind of journey?")
+        query = st.text_area("Describe your ideal walk:", "A quiet walk with lots of historical relevance.", height=100)
+
+    if st.button("Create My Journey", type="primary", use_container_width=True):
+        if st.session_state.start_location and destination_name:
+            with st.spinner("Crafting your personalized journey..."):
+                try:
+                    request = models.JourneyRequest(
+                        user_id=st.session_state.user_id,
+                        latitude=st.session_state.start_location['latitude'],
+                        longitude=st.session_state.start_location['longitude'],
+                        city=selected_city,
+                        query=query,
+                        destination_poi_id=poi_choices[destination_name]
+                    )
+                    destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
+                    end_lon = destination_poi['location']['coordinates'][0]
+                    end_lat = destination_poi['location']['coordinates'][1]
+                    route_data = services.get_route_from_ors(request.longitude, request.latitude, end_lon, end_lat)
+                    narrative = services.generate_narrative_with_rag(request)
+                    st.session_state.route_data = route_data
+                    st.session_state.narrative = narrative
+                    st.success("Your journey is ready!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"An error occurred: {e}")
+                    traceback.print_exc()
+        else:
+            st.warning("Please ensure location is set and a destination is selected.")
+
+# --- Main Content Area (NEW VERTICAL LAYOUT) ---
+st.header("Your Journey Awaits")
+
+# 1. The Map (Full Width)
+st.subheader("Interactive Map")
+m = folium.Map(location=st.session_state.map_center, zoom_start=15)
+if st.session_state.start_location:
+    folium.Marker([st.session_state.start_location['latitude'], st.session_state.start_location['longitude']], popup="Your Start", icon=folium.Icon(color="blue", icon="user")).add_to(m)
+if st.session_state.route_data:
     try:
-        response = httpx.post(ors_url, headers=headers, json=body, timeout=20.0)
-        
-        print(f"--- ORS API RESPONSE ---")
-        print(f"Status Code: {response.status_code}")
-        print(f"Response Body: {response.text}")
-        print(f"------------------------")
-
-        # --- THE TYPO IS FIXED HERE ---
-        response.raise_for_status() # Corrected method name
-        
-        ors_data = response.json()
-        route_info = ors_data['features'][0]['properties']['segments'][0]
-        
-        formatted_data = {
-            "routes": [{"duration": route_info['duration'], "distance": route_info['distance']}],
-            "geometry": {"coordinates": ors_data['features'][0]['geometry']['coordinates']}
-        }
-        return formatted_data
-        
-    except httpx.HTTPStatusError as e:
-        raise Exception(f"OpenRouteService API error: {e.response.text}")
+        points = st.session_state.route_data['geometry']['coordinates']
+        swapped_points = [(p[1], p[0]) for p in points]
+        folium.PolyLine(swapped_points, color="red", weight=5, opacity=0.8).add_to(m)
+        folium.Marker(swapped_points[-1], popup="Your Destination", icon=folium.Icon(color="red", icon="flag")).add_to(m)
+        m.fit_bounds([swapped_points[0], swapped__points[-1]])
     except (KeyError, IndexError) as e:
-        raise Exception(f"Could not parse route from OpenRouteService. Unexpected data structure. Error: {e}")
-    except httpx.RequestError as e:
-        raise Exception(f"Could not connect to OpenRouteService: {e}")
+        st.warning(f"Could not display route on map. Error: {e}")
+st_folium(m, width='100%', height=500, returned_objects=[])
 
-def generate_narrative_with_rag(request: models.JourneyRequest) -> models.JourneyNarrative:
-    llm = get_llm()
-    embeddings_model = get_embeddings_model()
-    user_prefs = knowledge_base.get_user_preferences(request.user_id)
-    preferences_text = f"This user's known preferences are: Likes: {user_prefs.get('likes', [])}, Dislikes: {user_prefs.get('dislikes', [])}."
-    query_embedding = embeddings_model.embed_query(request.query)
-    context = knowledge_base.search_knowledge_base(query_embedding=[query_embedding])
-    parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
-    prompt = f"""...""" # Your full prompt
+st.divider()
+
+# 2. The Generated Story (Full Width, Underneath the Map)
+st.subheader("Generated Story")
+if st.session_state.narrative and st.session_state.route_data:
+    narrative = st.session_state.narrative
+    route_data = st.session_state.route_data
     try:
-        ai_response = llm.invoke(prompt)
-        parsed_response = parser.parse(ai_response.content)
-        return parsed_response
-    except ValidationError as e:
-        raise Exception(f"Failed to generate a valid narrative from the AI model: {e}")
+        duration_min = route_data['routes'][0]['duration'] / 60
+        distance_km = route_data['routes'][0]['distance'] / 1000
+        # Use columns just for the metrics to keep them side-by-side
+        metric_col1, metric_col2 = st.columns(2)
+        with metric_col1:
+            st.metric(label="🚶‍♀️ Est. Time", value=f"{duration_min:.0f} min")
+        with metric_col2:
+            st.metric(label="📏 Distance", value=f"{distance_km:.2f} km")
+    except (KeyError, IndexError):
+        st.info("Route metrics not available.")
+    
+    st.subheader(narrative.title)
+    st.info(narrative.narrative)
+    st.success(f"**Fun Fact:** {narrative.fun_fact}")
+else:
+    st.info("Your journey's story and details will appear here.")
         
