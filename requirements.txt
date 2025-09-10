@@ -30,3 +30,5 @@ numpy
 python-multipart
 streamlit
 pandas
+folium
+stramlit_folium
