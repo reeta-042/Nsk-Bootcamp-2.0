@@ -29,3 +29,4 @@ faiss-cpu
 # --- Data Handling ---
 pandas
 numpy
+nest_asyncio
