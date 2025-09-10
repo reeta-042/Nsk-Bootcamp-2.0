@@ -1,10 +1,20 @@
 import streamlit as st
 import asyncio
-from app import services, models, knowledge_base
+import sys
+import os
 import pandas as pd
+from streamlit_folium import st_folium
+import folium
+from streamlit_js_eval import streamlit_js_eval, get_geolocation
+
+# --- FIX FOR ModuleNotFoundError ---
+# Add the project root directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+# -----------------------------------
+
+from app import services, models, knowledge_base
 
 # --- Page Configuration ---
-# This should be the first Streamlit command in your script
 st.set_page_config(
     page_title="Hometown Atlas",
     page_icon="🌍",
@@ -12,169 +22,226 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Main App Logic ---
+# --- Asynchronous Helper to run backend logic ---
+async def get_journey_data(request: models.JourneyRequest):
+    """
+    Asynchronously fetches route and narrative data.
+    """
+    try:
+        # Fetch destination details first
+        destination_poi = await knowledge_base.get_poi_by_id(request.destination_poi_id)
+        if not destination_poi:
+            st.error(f"Could not find destination with ID: {request.destination_poi_id}")
+            return None, None
 
-# Use st.cache_data to prevent re-running these functions on every interaction
+        end_lon = destination_poi['location']['coordinates'][0]
+        end_lat = destination_poi['location']['coordinates'][1]
+
+        # Create and run tasks concurrently
+        route_task = services.get_route_from_maptiler(
+            start_lon=request.longitude, start_lat=request.latitude,
+            end_lon=end_lon, end_lat=end_lat
+        )
+        narrative_task = services.generate_narrative_with_rag(request)
+
+        route_data, structured_narrative = await asyncio.gather(route_task, narrative_task)
+        
+        # Add destination POI to route_data for easy access
+        route_data['destination_poi'] = destination_poi
+
+        return route_data, structured_narrative
+
+    except Exception as e:
+        st.error(f"An error occurred while creating your journey: {e}")
+        return None, None
+
+# --- Caching Functions ---
 @st.cache_data
 def get_all_pois_as_choices():
     """
-    Fetches all POIs from MongoDB to populate a dropdown menu.
-    This is a synchronous wrapper for the async DB call.
+    Fetches all Points of Interest to be used as destination choices.
+    In a real app, this would fetch from a database.
     """
-    # We need a way to run an async function from a sync context
-    async def fetch():
-        # In a real app, you'd have a function in knowledge_base.py to get all POIs
-        # For now, we'll simulate it. Let's assume you add this function:
-        # pois = await knowledge_base.get_all_pois()
-        # For the demo, let's create some placeholder POIs.
-        # Replace this with your actual POI IDs and Names from your database.
-        return {
-            "University of Nigeria, Nsukka": "poi_unn_01",
-            "Freedom Park, Lagos": "poi_lag_01",
-            "Nike Art Gallery, Lagos": "poi_lag_02",
-        }
-    return asyncio.run(fetch())
+    # This is a placeholder. In a real app, you would call a function
+    # from your knowledge_base or services module.
+    return {
+        "University of Nigeria, Nsukka": "poi_unn_01",
+        "Freedom Park, Lagos": "poi_lag_01",
+        "Nike Art Gallery, Lagos": "poi_lag_02",
+    }
+
+# --- Initialize Session State ---
+# This ensures variables persist across reruns
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = "hackathon_user_01" # Default user
+if 'start_location' not in st.session_state:
+    st.session_state.start_location = None
+if 'route_data' not in st.session_state:
+    st.session_state.route_data = None
+if 'narrative' not in st.session_state:
+    st.session_state.narrative = None
+if 'map_center' not in st.session_state:
+    st.session_state.map_center = [6.855, 7.38] # Default center (Nsukka, Nigeria)
+if 'map_zoom' not in st.session_state:
+    st.session_state.map_zoom = 13
 
 # --- UI Layout ---
 
 st.title("🌍 Hometown Atlas")
-st.markdown("An intelligent travel companion that tells the rich, hidden stories of African cities.")
+st.markdown("Your intelligent travel companion for discovering the rich, hidden stories of cities.")
 
-# Create two columns for a cleaner layout
-col1, col2 = st.columns([1, 1])
+# --- Sidebar for Journey Configuration ---
+with st.sidebar:
+    st.header("📍 Plan Your Journey")
 
-with col1:
-    st.header("Plan Your Journey")
+    # Get destination from user
+    poi_choices = get_all_pois_as_choices()
+    destination_name = st.selectbox(
+        "Choose your destination:",
+        options=list(poi_choices.keys()),
+        index=0
+    )
+    destination_poi_id = poi_choices[destination_name]
 
-    # --- User Inputs ---
-    # Using st.session_state to hold values
-    if 'user_id' not in st.session_state:
-        st.session_state.user_id = "hackathon_user_01" # Default user for the demo
-
+    # Get journey preference from user
     query = st.text_area(
         "What kind of journey are you looking for?",
         "Show me an interesting and quiet walk.",
         height=100
     )
 
-    # Use the cached function to get POI choices
-    poi_choices = get_all_pois_as_choices()
-    destination_name = st.selectbox(
-        "Choose your destination:",
-        options=list(poi_choices.keys())
-    )
-    destination_poi_id = poi_choices[destination_name]
+    st.divider()
 
-    # For simplicity, we'll use text input for lat/lon.
-    # In a real app, you might use st.map or a location component.
-    latitude = st.number_input("Your current Latitude:", value=6.855, format="%.4f")
-    longitude = st.number_input("Your current Longitude:", value=7.38, format="%.4f")
-    city = st.text_input("Your current City:", value="Nsukka")
+    # Automatically fetch user's location
+    st.info("Your browser location is used as a starting point. You can also click the map to set a new start.")
+    location = get_geolocation()
+    if location and not st.session_state.start_location:
+        st.session_state.start_location = {
+            "latitude": location['coords']['latitude'],
+            "longitude": location['coords']['longitude']
+        }
+        # Center map on user's new location
+        st.session_state.map_center = [location['coords']['latitude'], location['coords']['longitude']]
+        st.session_state.map_zoom = 15
+        st.rerun() # Rerun to update the map with the new location
 
-    # The main action button
+    if st.session_state.start_location:
+        lat = st.session_state.start_location['latitude']
+        lon = st.session_state.start_location['longitude']
+        st.success(f"Start Location Set: ({lat:.4f}, {lon:.4f})")
+
+    # Journey creation button
     if st.button("Create My Journey", type="primary", use_container_width=True):
-        with st.spinner("Crafting your personalized story... This may take a moment."):
-            try:
-                # 1. Create the request model, just like FastAPI did
+        if st.session_state.start_location:
+            with st.spinner("Crafting your personalized story... This may take a moment."):
+                # Prepare the request model
                 request = models.JourneyRequest(
                     user_id=st.session_state.user_id,
-                    latitude=latitude,
-                    longitude=longitude,
-                    city=city,
+                    latitude=st.session_state.start_location['latitude'],
+                    longitude=st.session_state.start_location['longitude'],
+                    city="Unknown", # City can be derived or requested if needed
                     query=query,
                     destination_poi_id=destination_poi_id
                 )
+                
+                # Run the async data fetching function
+                route_data, narrative = asyncio.run(get_journey_data(request))
 
-                # 2. Call your existing service functions directly!
-                # We run the main async logic using asyncio.run()
-                async def get_journey_data():
-                    # Get destination details
-                    destination_poi = await knowledge_base.get_poi_by_id(request.destination_poi_id)
-                    if not destination_poi:
-                        st.error(f"Could not find destination with ID: {request.destination_poi_id}")
-                        return None, None
-
-                    end_lon = destination_poi['location']['coordinates'][0]
-                    end_lat = destination_poi['location']['coordinates'][1]
-
-                    # Get route and narrative in parallel
-                    route_task = services.get_route_from_maptiler(
-                        start_lon=request.longitude, start_lat=request.latitude,
-                        end_lon=end_lon, end_lat=end_lat
-                    )
-                    narrative_task = services.generate_narrative_with_rag(request)
-
-                    route_data, structured_narrative = await asyncio.gather(route_task, narrative_task)
-                    return route_data, structured_narrative
-
-                # Run the async function and get the results
-                route_data, structured_narrative = asyncio.run(get_journey_data())
-
-                # 3. Store results in session state to display them
-                if route_data and structured_narrative:
+                # Store results in session state
+                if route_data and narrative:
                     st.session_state.route_data = route_data
-                    st.session_state.narrative = structured_narrative
+                    st.session_state.narrative = narrative
                     st.success("Your journey is ready!")
+                    # Center map on the new route
+                    start = route_data['waypoints'][0]['location']
+                    end = route_data['waypoints'][1]['location']
+                    st.session_state.map_center = [(start[1] + end[1]) / 2, (start[0] + end[0]) / 2]
+                    st.session_state.map_zoom = 14
+                    st.rerun()
+        else:
+            st.warning("Please set a starting point by enabling location or clicking the map.")
 
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
 
+# --- Main Content: Map and Story ---
+map_col, story_col = st.columns([3, 2]) # Give more space to the map
 
-with col2:
-    st.header("Your Generated Journey")
+with map_col:
+    st.subheader("Your Interactive Map")
 
-    # --- Display Results ---
-    # Only show this section if a journey has been generated
-    if 'narrative' in st.session_state and 'route_data' in st.session_state:
+    # Create a Folium map centered on the session state location
+    m = folium.Map(
+        location=st.session_state.map_center,
+        zoom_start=st.session_state.map_zoom,
+        tiles="cartodbpositron"
+    )
+
+    # Add a marker for the start location
+    if st.session_state.start_location:
+        folium.Marker(
+            [st.session_state.start_location['latitude'], st.session_state.start_location['longitude']],
+            popup="Your Starting Point",
+            tooltip="Start",
+            icon=folium.Icon(color="blue", icon="play")
+        ).add_to(m)
+
+    # Draw the route and destination marker if data is available
+    if st.session_state.route_data:
+        try:
+            # Add destination marker
+            dest_poi = st.session_state.route_data['destination_poi']
+            dest_loc = dest_poi['location']['coordinates']
+            folium.Marker(
+                [dest_loc[1], dest_loc[0]], # Folium uses (lat, lon)
+                popup=dest_poi['name'],
+                tooltip="Destination",
+                icon=folium.Icon(color="green", icon="flag")
+            ).add_to(m)
+
+            # Draw the walking path
+            points = st.session_state.route_data['routes'][0]['geometry']['coordinates']
+            swapped_points = [(p[1], p[0]) for p in points] # Swap (lon, lat) to (lat, lon)
+            folium.PolyLine(swapped_points, color="#FF0000", weight=4, opacity=0.8).add_to(m)
+
+        except (KeyError, IndexError) as e:
+            st.warning(f"Could not display the full route on the map. Error: {e}")
+
+    # Display the map and capture clicks
+    map_data = st_folium(m, width='100%', height=500, returned_objects=[])
+
+    # Update start location if map is clicked
+    if map_data and map_data.get("last_clicked"):
+        clicked_coords = map_data["last_clicked"]
+        st.session_state.start_location = {
+            "latitude": clicked_coords['lat'],
+            "longitude": clicked_coords['lng']
+        }
+        st.rerun() # Rerun to update the start marker and text
+
+with story_col:
+    st.subheader("Your Generated Journey")
+
+    if st.session_state.narrative and st.session_state.route_data:
         narrative = st.session_state.narrative
         route_data = st.session_state.route_data
+        
+        # Display walk time and distance
+        try:
+            duration_min = route_data['routes'][0]['duration'] / 60
+            distance_km = route_data['routes'][0]['distance'] / 1000
+            st.metric(label="🚶‍♀️ Est. Walk Time", value=f"{duration_min:.0f} minutes")
+            st.metric(label="📏 Distance", value=f"{distance_km:.2f} km")
+        except (KeyError, IndexError):
+            st.info("Route metrics are not available.")
 
+        st.divider()
+
+        # Display the AI-generated narrative
         st.subheader(narrative.title)
         st.markdown(f"**Awareness:** *{narrative.location_awareness}*")
         st.info(narrative.narrative)
         st.success(f"**Fun Fact:** {narrative.fun_fact}")
 
-        # --- Display Map ---
-        # Extract coordinates from the route data to display on a map
-        try:
-            # Create a DataFrame for the map component
-            waypoints = route_data['waypoints']
-            start_point = pd.DataFrame([{'latitude': waypoints[0]['location'][1], 'longitude': waypoints[0]['location'][0]}])
-            end_point = pd.DataFrame([{'latitude': waypoints[1]['location'][1], 'longitude': waypoints[1]['location'][0]}])
+    else:
+        st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
+
             
-            st.map(start_point) # You can add more points to draw a path
-            st.write(f"**Walk Time:** Approximately {route_data['routes'][0]['duration'] / 60:.0f} minutes.")
-        except (KeyError, IndexError) as e:
-            st.warning("Could not display map from route data.")
-
-        # --- Display Raw JSON for debugging/transparency ---
-        with st.expander("Show Raw Route Data (JSON)"):
-            st.json(route_data)
-
-        # --- Feedback Mechanism ---
-        st.subheader("Did you enjoy this journey?")
-        feedback_col1, feedback_col2 = st.columns(2)
-        
-        if feedback_col1.button("👍 Yes, I liked it!", use_container_width=True):
-            with st.spinner("Thanks! Updating your preferences..."):
-                reflection_request = models.ReflectionRequest(
-                    user_id=st.session_state.user_id,
-                    original_query=query,
-                    journey_title=narrative.title,
-                    user_feedback="liked"
-                )
-                asyncio.run(services.reflect_and_update_preferences(reflection_request))
-                st.toast("Your preferences have been updated!", icon="💖")
-
-        if feedback_col2.button("👎 Not for me", use_container_width=True):
-            with st.spinner("Thanks for the feedback! Learning..."):
-                reflection_request = models.ReflectionRequest(
-                    user_id=st.session_state.user_id,
-                    original_query=query,
-                    journey_title=narrative.title,
-                    user_feedback="disliked"
-                )
-                asyncio.run(services.reflect_and_update_preferences(reflection_request))
-                st.toast("Your preferences have been updated.", icon="🧠")
-
-                  
