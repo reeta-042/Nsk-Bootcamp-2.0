@@ -28,3 +28,5 @@ numpy
 
 # For handling image uploads with FastAPI
 python-multipart
+streamlit
+pandas
