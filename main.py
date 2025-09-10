@@ -5,7 +5,7 @@ from typing import List
 from streamlit_folium import st_folium
 import folium
 from streamlit_js_eval import get_geolocation
-import asyncio # Still needed for the services part
+import asyncio
 
 # --- Project Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
@@ -14,7 +14,7 @@ from app import services, models, knowledge_base
 # --- Page Configuration ---
 st.set_page_config(page_title="Hometown Atlas", page_icon="🌍", layout="wide", initial_sidebar_state="expanded")
 
-# --- Caching Functions (Now calling sync functions) ---
+# --- Caching Functions (Calling sync knowledge_base functions) ---
 @st.cache_data(ttl=3600)
 def get_all_tags_from_db():
     return knowledge_base.get_unique_tags()
@@ -27,10 +27,9 @@ def get_filtered_pois_from_db(tags: List[str] = None, budget: str = None):
     return {poi['name']: poi['_id'] for poi in pois_list}
 
 # --- Async Helper for services (MapTiler, Gemini) ---
-# This part still needs to be async because httpx and langchain are async
 async def get_journey_data(request: models.JourneyRequest):
     try:
-        # This part is now sync
+        # Sync call to the database
         destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
         if not destination_poi:
             st.error(f"Could not find destination with ID: {request.destination_poi_id}")
@@ -38,14 +37,17 @@ async def get_journey_data(request: models.JourneyRequest):
         
         end_lon, end_lat = destination_poi['location']['coordinates']
         
-        # These services are still async
+        # Create async tasks for external services
         route_task = services.get_route_from_maptiler(request.longitude, request.latitude, end_lon, end_lat)
         narrative_task = services.generate_narrative_with_rag(request)
         
-        # We still need to gather the async results
+        # Await only the async tasks
         route_data, structured_narrative = await asyncio.gather(route_task, narrative_task)
         
-        if route_data: route_data['destination_poi'] = destination_poi
+        # Add the sync data to the results
+        if route_data:
+            route_data['destination_poi'] = destination_poi
+            
         return route_data, structured_narrative
     except Exception as e:
         st.error(f"An error occurred while creating your journey: {e}")
@@ -59,9 +61,7 @@ if 'narrative' not in st.session_state: st.session_state.narrative = None
 if 'map_center' not in st.session_state: st.session_state.map_center = [9.0765, 7.3986]
 if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 12
 
-# --- UI (No changes needed here) ---
-# The entire UI section from your last version remains the same.
-# ... (paste the full UI code here) ...
+# --- UI ---
 st.title("🌍 Hometown Atlas")
 st.markdown("Your intelligent travel companion for discovering the rich, hidden stories of cities.")
 
@@ -116,7 +116,6 @@ with st.sidebar:
                     query=query,
                     destination_poi_id=destination_poi_id
                 )
-                # We still need asyncio.run for the services part
                 route_data, narrative = asyncio.run(get_journey_data(request))
                 if route_data and narrative:
                     st.session_state.route_data = route_data
@@ -163,7 +162,6 @@ if st.session_state.narrative and st.session_state.route_data:
     st.subheader(narrative.title)
     st.markdown(f"**Awareness:** *{narrative.location_awareness}*")
     st.info(narrative.narrative)
-    st.success(f"**Fun Fact:** {narrative.fun_fact}")
+    st.success(f"**Fun Fact:** *{narrative.fun_fact}*")
 else:
     st.info("Your journey's story and details will appear here after you click 'Create My Journey'.")
-                   
