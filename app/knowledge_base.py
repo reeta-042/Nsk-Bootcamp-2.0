@@ -49,18 +49,12 @@ except FileNotFoundError as e:
 # ==============================================================================
 
 async def get_poi_by_id(poi_id: str) -> Dict[str, Any]:
-    """
-    Fetches a single Point of Interest document from the database by its _id.
-    
-    Args:
-        poi_id: The unique identifier for the POI.
-        
-    Returns:
-        A dictionary representing the POI, or None if not found.
-    """
-    if not poi_collection:
+    """Fetches a single Point of Interest document from the database by its _id."""
+    # --- FIX APPLIED HERE ---
+    if poi_collection is None:
         return None
     return await poi_collection.find_one({"_id": poi_id})
+
 
 
 # ==============================================================================
@@ -98,45 +92,30 @@ def search_knowledge_base(query_embedding, k: int = 5) -> str:
 # ==============================================================================
 
 async def get_user_preferences(user_id: str) -> Dict[str, List[str]]:
-    """
-    Fetches a user's preference profile from the 'users' collection.
-    If the user doesn't exist, returns a default empty profile.
-    
-    Args:
-        user_id: The unique identifier for the user.
-        
-    Returns:
-        A dictionary with 'likes' and 'dislikes' lists.
-    """
-    if not user_collection:
+    """Fetches a user's preference profile from the 'users' collection."""
+    # --- FIX APPLIED HERE ---
+    if user_collection is None:
         return {"likes": [], "dislikes": []}
         
     user_profile = await user_collection.find_one({"_id": user_id})
     if user_profile:
-        # Use .get() to safely access the 'preferences' key
         return user_profile.get("preferences", {"likes": [], "dislikes": []})
     
-    # Return a default profile for new or non-existent users
     return {"likes": [], "dislikes": []}
 
 
+
 async def update_user_preferences(user_id: str, new_preferences: Dict[str, List[str]]):
-    """
-    Updates (or inserts) a user's preference profile in the 'users' collection.
-    
-    Args:
-        user_id: The unique identifier for the user.
-        new_preferences: The new preferences dictionary to save.
-    """
-    if not user_collection:
+    """Updates (or inserts) a user's preference profile in the 'users' collection."""
+    # --- FIX APPLIED HERE ---
+    if user_collection is None:
         print("❌ Cannot update preferences: User collection not available.")
         return
 
     await user_collection.update_one(
         {"_id": user_id},
         {"$set": {"preferences": new_preferences}},
-        upsert=True  # This is the magic: it creates the document if it doesn't exist
+        upsert=True
     )
     print(f"✅ Preferences updated for user: {user_id}")
-
-                        
+    
