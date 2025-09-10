@@ -52,7 +52,7 @@ def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_l
         ]
     }
     
-    ors_url = "https://api.openrouteservice.org/v2/directions/foot-walking/geojson"
+    ors_url = "https://api.openrouteservice.org/v2/directions/foot-walking"
     
     print(f"DEBUG: Calling OpenRouteService URL: {ors_url}")
 
