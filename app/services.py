@@ -59,9 +59,9 @@ async def get_route_from_maptiler(start_lon: float, start_lat: float, end_lon: f
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=f"MapTiler API error: {e.response.text}")
+            raise Exception(status_code=e.response.status_code, detail=f"MapTiler API error: {e.response.text}")
         except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Could not connect to MapTiler service: {e}")
+            raise Exception(status_code=503, detail=f"Could not connect to MapTiler service: {e}")
 
 
 # ==============================================================================
@@ -94,7 +94,7 @@ async def generate_narrative_with_rag(request: models.JourneyRequest) -> models.
         return parsed_response
     except ValidationError as e:
         print(f"LLM output validation error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate a valid narrative from the AI model.")
+        raise Exception(status_code=500, detail="Failed to generate a valid narrative from the AI model.")
 
 
 # ==============================================================================
@@ -126,7 +126,7 @@ async def reflect_and_update_preferences(request: models.ReflectionRequest):
 # 4. Image-Based Location Functions
 # ==============================================================================
 
-async def get_location_from_image(image_file: UploadFile) -> Dict[str, float]:
+async def get_location_from_image(image_file: Any) -> Dict[str, float]:
     """
     Analyzes an image using Gemini Vision to identify the landmark and return its coordinates.
     """
@@ -146,5 +146,5 @@ async def get_location_from_image(image_file: UploadFile) -> Dict[str, float]:
         return location_data
     except (json.JSONDecodeError, KeyError, ValidationError) as e:
         print(f"Error identifying location from image: {e}")
-        raise HTTPException(status_code=500, detail="Could not identify a valid location from the provided image.")
+        raise Exception(status_code=500, detail="Could not identify a valid location from the provided image.")
         
