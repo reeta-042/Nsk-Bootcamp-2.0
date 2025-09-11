@@ -2,7 +2,7 @@
 
 import os
 import httpx
-import numpy as np # <-- ADD THIS IMPORT
+import numpy as np
 from typing import Dict
 
 from dotenv import load_dotenv
@@ -20,17 +20,28 @@ load_dotenv()
 ORS_API_KEY = os.getenv("ORS_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-@st.cache_resource
+# --- NEW CACHING STRATEGY (THE FIX) ---
+# We use a simple, thread-safe pattern instead of @st.cache_resource
+# to avoid deadlocks with model loading.
+
+# Check if the models are already in Streamlit's session state
+if 'llm' not in st.session_state:
+    print("--- Initializing Gemini LLM... ---")
+    st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GEMINI_API_KEY)
+
+if 'embedding_model' not in st.session_state:
+    print("--- Initializing Sentence Transformer model... ---")
+    st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
 def get_llm():
-    return ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=GEMINI_API_KEY)
+    """Gets the initialized LLM from session state."""
+    return st.session_state.llm
 
-@st.cache_resource
 def get_embedding_model():
-    print("--- Loading local Sentence Transformer model... ---")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    print("--- Sentence Transformer model loaded successfully. ---")
-    return model
+    """Gets the initialized Sentence Transformer model from session state."""
+    return st.session_state.embedding_model
 
+# --- ROUTING SERVICE (No changes needed) ---
 def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_lat: float) -> Dict:
     ors_url = f"https://api.openrouteservice.org/v2/directions/foot-walking?api_key={ORS_API_KEY}&start={start_lon},{start_lat}&end={end_lon},{end_lat}"
     try:
@@ -47,6 +58,7 @@ def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_l
     except Exception as e:
         raise Exception(f"Could not get or parse route from OpenRouteService. Error: {e}")
 
+# --- NARRATIVE GENERATION (No changes needed) ---
 def generate_narrative_with_rag(request: models.JourneyRequest) -> models.JourneyNarrative:
     llm = get_llm()
     embedding_model = get_embedding_model()
@@ -54,14 +66,8 @@ def generate_narrative_with_rag(request: models.JourneyRequest) -> models.Journe
     user_prefs = knowledge_base.get_user_preferences(request.user_id)
     preferences_text = f"This user's known preferences are: Likes: {user_prefs.get('likes', [])}, Dislikes: {user_prefs.get('dislikes', [])}."
 
-    print("--- Creating embedding for user query (local)... ---")
     query_embedding = embedding_model.encode(request.query)
-    print("--- Query embedding created successfully. ---")
-
-    # Reshape the embedding to be a 2D array (1xN) which FAISS expects
     query_embedding_2d = np.array([query_embedding]).astype('float32')
-
-    # THE FIX: Pass the correctly shaped NumPy array to the search function
     context = knowledge_base.search_knowledge_base(query_embedding_2d)
     
     parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
