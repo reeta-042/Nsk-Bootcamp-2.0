@@ -14,16 +14,21 @@ from . import knowledge_base
 
 # --- Routing Service Function ---
 
-def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_lat: float) -> Dict:
-    """Fetches route data from OpenRouteService API."""
+# The function now accepts a 'travel_mode' argument
+def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_lat: float, travel_mode: str = "foot-walking") -> Dict:
+    """
+    Fetches route data from OpenRouteService API for a given travel mode.
+    Valid modes include 'foot-walking', 'driving-car', etc.
+    """
     ORS_API_KEY = os.getenv("ORS_API_KEY")
-    ors_url = f"https://api.openrouteservice.org/v2/directions/foot-walking?api_key={ORS_API_KEY}&start={start_lon},{start_lat}&end={end_lon},{end_lat}"
+    
+    # The travel_mode is now a variable in the URL string
+    ors_url = f"https://api.openrouteservice.org/v2/directions/{travel_mode}?api_key={ORS_API_KEY}&start={start_lon},{start_lat}&end={end_lon},{end_lat}"
 
     try:
-        # Use httpx for robust, asynchronous-friendly requests
         with httpx.Client() as client:
             response = client.get(ors_url, timeout=30.0)
-            response.raise_for_status() # Raise an exception for 4xx or 5xx status codes
+            response.raise_for_status()
             ors_data = response.json()
 
         route_info = ors_data['features'][0]['properties']['segments'][0]
@@ -43,6 +48,7 @@ def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_l
 
 
 # --- Narrative and Chat Generation Functions ---
+# (The rest of the file remains exactly the same)
 
 def generate_narrative_with_rag(llm, embedding_model, parser, request: models.JourneyRequest, destination_name: str) -> models.JourneyNarrative:
     """
