@@ -1,11 +1,12 @@
-# main.py
+
 
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-from streamlit_js_eval import get_geolocation # <-- Import the geolocation function
+from streamlit_js_eval import get_geolocation
 import numpy as np
 
+# The services import will now trigger the new, safe caching
 from app import services, models, knowledge_base
 
 # --- 1. PAGE CONFIGURATION ---
@@ -26,18 +27,15 @@ if "route_data" not in st.session_state:
 if "narrative" not in st.session_state:
     st.session_state.narrative = None
 
-# --- 3. GET USER'S LOCATION (once per session) ---
+# --- 3. GET USER'S LOCATION ---
 if st.session_state.start_location is None:
-    # This will only run the very first time the app loads
     location = get_geolocation()
     if location:
-        print(f"--- DEBUG: Geolocation received from browser: {location}")
-        # THE FIX: Standardize the location format immediately
         st.session_state.start_location = {
             'lat': location['coords']['latitude'],
             'lng': location['coords']['longitude']
         }
-        st.rerun() # Rerun to update the UI with the new location
+        st.rerun()
 
 # --- 4. SIDEBAR (USER INPUT) ---
 with st.sidebar:
@@ -79,7 +77,6 @@ with st.sidebar:
                     end_lat = destination_poi['location']['coordinates'][1]
                     end_lon = destination_poi['location']['coordinates'][0]
 
-                    # THE FIX: Use the standardized keys 'lat' and 'lng'
                     start_lat_rounded = round(st.session_state.start_location['lat'], 5)
                     start_lon_rounded = round(st.session_state.start_location['lng'], 5)
                     end_lat_rounded = round(end_lat, 5)
@@ -111,7 +108,6 @@ with st.sidebar:
 # --- 5. MAIN PANEL (MAP AND STORY) ---
 st.subheader("Interactive Map")
 if st.session_state.start_location:
-    # THE FIX: Use the standardized keys 'lat' and 'lng'
     st.success(f"Start Location Set: {st.session_state.start_location['lat']:.4f}, {st.session_state.start_location['lng']:.4f}")
 else:
     st.info("Click on the map to set your starting location.")
@@ -144,7 +140,6 @@ if st.session_state.journey_created and st.session_state.route_data:
 map_data = st_folium(m, width='100%', height=450)
 
 if map_data and map_data.get("last_clicked"):
-    # The map click already returns the correct {'lat': ..., 'lng': ...} format
     clicked_coords = map_data["last_clicked"]
     st.session_state.start_location = clicked_coords
     st.rerun()
@@ -170,3 +165,4 @@ if st.session_state.journey_created and st.session_state.narrative:
     st.success(f"**Fun Fact:** {narrative.fun_fact}")
 else:
     st.info("Your journey's story and details will appear here.")
+    
