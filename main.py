@@ -26,7 +26,7 @@ if 'models_initialized' not in st.session_state:
         GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         
         # Initialize and store each model in session state
-        st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=GEMINI_API_KEY)
+        st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
         
