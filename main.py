@@ -9,6 +9,9 @@ from dotenv import load_dotenv
 import traceback
 import os
 
+# --- DEFINITIVE AUTHENTICATION FIX ---
+# Import AnonymousCredentials, the official way to bypass credential searches.
+from google.auth.credentials import AnonymousCredentials
 from sentence_transformers import SentenceTransformer
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import PydanticOutputParser
@@ -25,14 +28,14 @@ def initialize_models():
     Loads and caches all necessary AI models and parsers.
     This function runs only once per session.
     """
-    # --- PERMANENT AUTHENTICATION FIX ---
-    # By providing ONLY the google_api_key and setting no credentials,
-    # the library defaults to the simplest authentication method,
-    # which avoids both the metadata server timeout and the refresh error.
+    # Use AnonymousCredentials to explicitly tell the library to NOT search for
+    # any other credentials and to rely solely on the provided API key.
+    # This is the permanent solution to the `metadata.google.internal` error.
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     st.session_state.llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-pro",
         google_api_key=GEMINI_API_KEY,
+        credentials=AnonymousCredentials(),
         transport="rest",
         request_timeout=120
     )
@@ -43,15 +46,14 @@ def initialize_models():
 initialize_models()
 
 # --- 2. SESSION STATE MANAGEMENT ---
-# Initialize all necessary keys for the app's state to prevent errors on first run.
+# Initialize all necessary keys for the app's state.
 if "start_location" not in st.session_state: st.session_state.start_location = None
 if "selected_city" not in st.session_state: st.session_state.selected_city = "Nsukka"
 if "selected_destination_id" not in st.session_state: st.session_state.selected_destination_id = None
 if "journey_narrative" not in st.session_state: st.session_state.journey_narrative = None
 if "journey_route_data" not in st.session_state: st.session_state.journey_route_data = None
-if "last_journey_query" not in st.session_state: st.session_state.last_journey_query = ""
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Welcome! Select a destination, describe your ideal journey below, then click 'Create My Journey'."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Welcome! I am your personal tour guide. Once you create a journey, you can ask me anything about it here."}]
 if "user_id" not in st.session_state: st.session_state.user_id = "hackathon_user_01"
 
 # --- 3. SIDEBAR (CONTROLS & FILTERS) ---
@@ -98,21 +100,6 @@ with st.sidebar:
 # --- 4. MAIN PANEL (UI TABS) ---
 tab1, tab2 = st.tabs(["📍 Your Journey", "💬 Talk with the Guide"])
 
-# --- TAB 2: CHAT INTERFACE (Placed before Tab 1 to process input first) ---
-with tab2:
-    st.subheader("Talk with the Tourist Guide")
-
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # Handle new chat input
-    if prompt := st.chat_input("Describe your ideal journey here..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        # Rerun to display the user's message immediately
-        st.rerun()
-
 # --- TAB 1: JOURNEY DISPLAY ---
 with tab1:
     st.subheader("🗺️ Hometown Atlas Interactive Map")
@@ -124,7 +111,6 @@ with tab1:
             st.session_state.start_location = {'lat': location['coords']['latitude'], 'lng': location['coords']['longitude']}
             st.rerun()
 
-    # Set default map center or use user's location
     map_center = [st.session_state.start_location['lat'], st.session_state.start_location['lng']] if st.session_state.start_location else [6.855, 7.38]
     m = folium.Map(location=map_center, zoom_start=14)
 
@@ -136,15 +122,11 @@ with tab1:
 
     # --- JOURNEY CREATION LOGIC ---
     if create_journey_button:
-        # Find the last message from the user to use as the query
-        user_messages = [msg["content"] for msg in st.session_state.messages if msg["role"] == "user"]
-        journey_query = user_messages[-1] if user_messages else ""
-        st.session_state.last_journey_query = journey_query
+        # The user no longer needs to provide a query. We use a default internal query.
+        default_journey_query = "A detailed and engaging travel narrative for a walk to the destination."
 
         if not st.session_state.selected_destination_id:
             st.error("Please choose a destination from the sidebar.")
-        elif not journey_query:
-            st.error("Please describe the journey you want in the 'Talk with the Guide' tab first.")
         elif not st.session_state.start_location:
             st.error("Could not determine your starting location. Please allow location access and refresh.")
         else:
@@ -159,17 +141,13 @@ with tab1:
                     route_data = services.get_route_from_ors(start_lon, start_lat, end_lon, end_lat)
                     request = models.JourneyRequest(
                         user_id=st.session_state.user_id, latitude=start_lat, longitude=start_lon,
-                        city=st.session_state.selected_city, query=journey_query,
+                        city=st.session_state.selected_city, query=default_journey_query,
                         destination_poi_id=st.session_state.selected_destination_id
                     )
                     narrative = services.generate_narrative_with_rag(request, dest_poi['name'])
 
                     st.session_state.journey_narrative = narrative
                     st.session_state.journey_route_data = route_data
-                    
-                    # Add AI's journey summary to chat history
-                    chat_summary = f"I've created your journey to {dest_poi['name']}: **{narrative.title}**. You can see the full details in the 'Your Journey' tab."
-                    st.session_state.messages.append({"role": "assistant", "content": chat_summary})
                     st.rerun()
 
                 except Exception as e:
@@ -212,25 +190,60 @@ with tab1:
         st.markdown("**Did you find this journey useful?**")
         feedback_col1, feedback_col2, _ = st.columns([1, 1, 4])
 
+        # A default query is used for feedback since the user provides none
+        feedback_query = "A general journey to the destination."
         if feedback_col1.button("👍 Yes", key="like_journey"):
             with st.spinner("Learning from your feedback..."):
                 reflection_request = models.ReflectionRequest(
-                    user_id=st.session_state.user_id,
-                    original_query=st.session_state.last_journey_query,
-                    journey_title=narrative.title,
-                    user_feedback="liked"
+                    user_id=st.session_state.user_id, original_query=feedback_query,
+                    journey_title=narrative.title, user_feedback="liked"
                 )
                 services.reflect_and_update_preferences(reflection_request)
 
         if feedback_col2.button("👎 No", key="dislike_journey"):
             with st.spinner("Learning from your feedback..."):
                 reflection_request = models.ReflectionRequest(
-                    user_id=st.session_state.user_id,
-                    original_query=st.session_state.last_journey_query,
-                    journey_title=narrative.title,
-                    user_feedback="disliked"
+                    user_id=st.session_state.user_id, original_query=feedback_query,
+                    journey_title=narrative.title, user_feedback="disliked"
                 )
                 services.reflect_and_update_preferences(reflection_request)
     else:
-        st.info("To begin, select a destination in the sidebar, describe what you want in the 'Talk with the Guide' tab, and then click 'Create My Journey'.")
-            
+        st.info("To begin, select a destination in the sidebar and click 'Create My Journey'.")
+
+# --- TAB 2: CHAT INTERFACE ---
+with tab2:
+    st.subheader("Talk with the Tourist Guide")
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("Ask a follow-up question..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    if st.session_state.journey_narrative:
+                        conversation_history = " ".join([m['content'] for m in st.session_state.messages])
+                        dest_poi = knowledge_base.get_poi_by_id(st.session_state.selected_destination_id)
+
+                        response_content = services.generate_chat_response(
+                            user_id=st.session_state.user_id, city=st.session_state.selected_city,
+                            destination_name=dest_poi['name'], journey_narrative=st.session_state.journey_narrative,
+                            conversation_history=conversation_history
+                        )
+                        st.markdown(response_content)
+                        st.session_state.messages.append({"role": "assistant", "content": response_content})
+                    else:
+                        st.warning("Please create a journey first before asking questions.")
+                        st.session_state.messages.append({"role": "assistant", "content": "I can only answer questions about a journey after you've created one. Please go to the 'Your Journey' tab and click 'Create My Journey'."})
+
+                except Exception as e:
+                    error_message = f"I'm sorry, I encountered an error: {e}"
+                    st.error(error_message)
+                    st.session_state.messages.append({"role": "assistant", "content": error_message})
+                    traceback.print_exc()
+    
