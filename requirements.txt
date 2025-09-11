@@ -30,3 +30,5 @@ faiss-cpu
 pandas
 numpy
 nest_asyncio
+sentence-transformers
+torch
