@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 import streamlit as st
 import faiss
 import pickle
-
+import numpy as np
 # --- Database and FAISS Initialization ---
 # Uses Streamlit's caching for efficient, one-time loading.
 
