@@ -21,16 +21,12 @@ st.set_page_config(page_title="Hometown Atlas", page_icon="🗺️", layout="wid
 load_dotenv()
 
 @st.cache_resource
-def waking_up():
+def initialize_models():
     """
     Loads and caches all necessary AI models and parsers.
     This function runs only once per session.
     """
-    # --- FINAL AUTHENTICATION FIX ---
-    # The `langchain-google-genai` library is designed to automatically find the
-    # `GOOGLE_API_KEY` from the environment variables. Streamlit Cloud automatically
-    # loads secrets into the environment, so we don't need to pass any auth parameters.
-    # This is the cleanest approach and avoids all previous errors.
+    
     st.session_state.llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-pro",
         transport="rest",
@@ -40,7 +36,7 @@ def waking_up():
     st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
 
 # Run model initialization
-waking_up()
+initialize_models()
 
 # --- 2. SESSION STATE MANAGEMENT ---
 # Initialize all necessary keys for the app's state.
@@ -141,7 +137,14 @@ with tab1:
                         city=st.session_state.selected_city, query=default_journey_query,
                         destination_poi_id=st.session_state.selected_destination_id
                     )
-                    narrative = services.generate_narrative_with_rag(request, dest_poi['name'])
+                    # Pass the initialized models to the service function
+                    narrative = services.generate_narrative_with_rag(
+                        llm=st.session_state.llm,
+                        embedding_model=st.session_state.embedding_model,
+                        parser=st.session_state.parser,
+                        request=request,
+                        destination_name=dest_poi['name']
+                    )
 
                     st.session_state.journey_narrative = narrative
                     st.session_state.journey_route_data = route_data
@@ -194,7 +197,8 @@ with tab1:
                     user_id=st.session_state.user_id, original_query=feedback_query,
                     journey_title=narrative.title, user_feedback="liked"
                 )
-                services.reflect_and_update_preferences(reflection_request)
+                # Pass the initialized llm to the service function
+                services.reflect_and_update_preferences(st.session_state.llm, reflection_request)
 
         if feedback_col2.button("👎 No", key="dislike_journey"):
             with st.spinner("Learning from your feedback..."):
@@ -202,7 +206,8 @@ with tab1:
                     user_id=st.session_state.user_id, original_query=feedback_query,
                     journey_title=narrative.title, user_feedback="disliked"
                 )
-                services.reflect_and_update_preferences(reflection_request)
+                # Pass the initialized llm to the service function
+                services.reflect_and_update_preferences(st.session_state.llm, reflection_request)
     else:
         st.info("To begin, select a destination in the sidebar and click 'Create My Journey'.")
 
@@ -226,7 +231,9 @@ with tab2:
                         conversation_history = " ".join([m['content'] for m in st.session_state.messages])
                         dest_poi = knowledge_base.get_poi_by_id(st.session_state.selected_destination_id)
 
+                        # Pass the initialized llm to the service function
                         response_content = services.generate_chat_response(
+                            llm=st.session_state.llm,
                             user_id=st.session_state.user_id, city=st.session_state.selected_city,
                             destination_name=dest_poi['name'], journey_narrative=st.session_state.journey_narrative,
                             conversation_history=conversation_history
@@ -242,4 +249,4 @@ with tab2:
                     st.error(error_message)
                     st.session_state.messages.append({"role": "assistant", "content": error_message})
                     traceback.print_exc()
-        
+                
