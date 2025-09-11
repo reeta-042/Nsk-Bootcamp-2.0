@@ -1,6 +1,6 @@
 # requirements.txt
 
-# --- Let the installer figure it out ---
+
 streamlit
 streamlit-js-eval
 sentence-transformers
@@ -8,11 +8,11 @@ langchain
 langchain-core
 langchain-google-genai
 faiss-cpu
-openrouteservice-py
 pymongo[srv]
 httpx
 pydantic
 numpy
+pandas
 folium
 streamlit-folium
 python-dotenv
