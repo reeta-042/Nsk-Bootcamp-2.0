@@ -1,34 +1,29 @@
-# --- Core Web Application ---
-streamlit
+# requirements.txt
 
-# --- Interactive Map ---
-folium
-streamlit-folium
+# --- Core Framework ---
+streamlit==1.36.0
+streamlit-js-eval==0.1.5
 
-# --- Browser-side functionality ---
-streamlit-js-eval
+# --- AI & LangChain ---
+# Pinning torch and sentence-transformers to known stable versions to avoid the "meta tensor" error.
+torch==2.1.2
+sentence-transformers==2.2.2
+langchain==0.1.20 
+langchain-google-genai==1.0.5
+faiss-cpu==1.8.0
 
-# --- Data Validation and Models ---
-pydantic
+# --- APIs & Database ---
+openrouteservice-py==2.3.0
+pymongo[srv]==4.7.2
+httpx==0.27.0
 
-# --- Environment Variable Management ---
-python-dotenv
+# --- Data Handling & Validation ---
+pydantic==2.7.1
+numpy==1.26.4
 
-# --- Asynchronous HTTP Requests (for MapTiler API) ---
-httpx
+# --- Mapping ---
+folium==0.16.0
+streamlit-folium==0.19.1
 
-# --- Database Driver (for MongoDB Knowledge Base) ---
-motor
-pymongo[srv]
-
-# --- AI and Machine Learning (Google Gemini and Vector Search) ---
-langchain
-langchain-google-genai
-faiss-cpu
-
-# --- Data Handling ---
-pandas
-numpy
-nest_asyncio
-sentence-transformers
-torch
+# --- Utilities ---
+python-dotenv==1.0.1
