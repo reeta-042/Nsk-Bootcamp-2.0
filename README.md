@@ -8,7 +8,7 @@ Hometown Atlas is an intelligent, AI-powered travel companion that creates perso
 ## Features
 
 *   **Dynamic Journey Generation:** Simply select a destination, and the AI crafts a unique walking narrative, complete with estimated time and distance.
-*   **Interactive Map:** Visualizes your starting point and the generated route to your destination, powered by OpenRouteService.
+*   **Interactive Map:** Visualizes your starting point and the generated route to your destination, powered by OpenRouteService and MapTiler
 *   **AI-Powered Tourist Guide:** A built-in chatbot allows you to ask follow-up questions about your destination, look for specific things (like local delicacies!), and get context-aware answers.
 *   **Advanced Filtering:** Easily filter destinations by interests, tags (e.g., "history", "bakery"), and budget level.
 *   **Self-Learning Preferences:** The app learns from your feedback (👍/👎) to better tailor future suggestions to your tastes.
