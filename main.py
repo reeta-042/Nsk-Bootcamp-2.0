@@ -27,7 +27,7 @@ def initialize_models():
         with st.spinner("Warming up the AI guide..."):
             try:
                 st.session_state.llm = ChatGoogleGenerativeAI(
-                    model="gemini-2.5-pro",
+                    model="gemini-2.5-flash",
                     transport="rest",
                     timeout=120
                 )
