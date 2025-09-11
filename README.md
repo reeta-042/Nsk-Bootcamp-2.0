@@ -28,6 +28,18 @@ Hometown Atlas is an intelligent, AI-powered travel companion that creates perso
 
 ---
 
+### The Role of `faiss_index.bin` and `data.pkl`
+
+These two files form the core of our pre-computed knowledge base, allowing for incredibly fast and efficient information retrieval:
+
+*   **`data.pkl` (The Library):** This is a simple Python pickle file that contains all of our curated travel stories and cultural facts, stored as a list of plain text chunks. It's the "library" of all the knowledge our AI can access.
+
+*   **`faiss_index.bin` (The Index Card Catalog):** This is the FAISS index file. It doesn't store the text itself; instead, it stores the *numerical vector embeddings* of every text chunk from `data.pkl`. It acts like a highly efficient index card catalog, allowing the system to instantly find the vectors (and thus, the stories) that are most semantically similar to the user's query, without having to re-read the entire library every time.
+
+In short, `data.pkl` holds the **what** (the knowledge), and `faiss_index.bin` holds the **where** (the map to find that knowledge instantly).
+
+---
+
 ## 🚀 How to Run
 
 1.  **Clone the repository:**
