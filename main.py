@@ -1,119 +1,178 @@
+# main.py
+
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-from streamlit_js_eval import get_geolocation
-import traceback
+import numpy as np
 
-# Import our application modules
 from app import services, models, knowledge_base
 
-# --- Page Config ---
-st.set_page_config(page_title="Hometown Atlas", page_icon="🌍", layout="wide")
+# --- 1. PAGE CONFIGURATION ---
+st.set_page_config(
+    page_title="UrbanScribe",
+    page_icon="🗺️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- Session State Initialization ---
+# --- 2. SESSION STATE INITIALIZATION ---
+# Initialize session state variables if they don't exist.
 if "start_location" not in st.session_state:
     st.session_state.start_location = None
-if "map_center" not in st.session_state:
-    st.session_state.map_center = [6.855, 7.38] # Default center
+if "journey_created" not in st.session_state:
+    st.session_state.journey_created = False
 if "route_data" not in st.session_state:
     st.session_state.route_data = None
 if "narrative" not in st.session_state:
     st.session_state.narrative = None
-if "user_id" not in st.session_state:
-    st.session_state.user_id = "hackathon_user_01"
 
-# --- Sidebar for Controls ---
+# --- 3. SIDEBAR (USER INPUT) ---
 with st.sidebar:
     st.title("UrbanScribe")
     st.markdown("Your AI-powered travel companion.")
+    st.divider()
 
-    location = get_geolocation()
-    if location and not st.session_state.start_location:
-        st.session_state.start_location = location['coords']
-        st.session_state.map_center = [location['coords']['latitude'], location['coords']['longitude']]
-        st.rerun()
+    # --- Journey Style Tab ---
+    st.subheader("1. Describe Your Journey")
+    query = st.text_area(
+        "What kind of journey are you looking for?",
+        "A quiet walk with lots of historical relevance",
+        height=100,
+        placeholder="e.g., 'A vibrant market tour' or 'A peaceful park walk'"
+    )
 
-    if st.session_state.start_location:
-        st.success(f"📍 Location Acquired!")
+    # --- Destination Tab ---
+    st.subheader("2. Choose Your Destination")
+    
+    # City/Region Selection
+    selected_city = st.selectbox(
+        "Select City/Region:",
+        ("Nsukka", "Enugu", "Addis Ababa", "Nairobi", "Lagos")
+    )
+    
+    # Fetch POIs for the selected city
+    poi_list = knowledge_base.get_pois_by_city(selected_city)
+    
+    # THE FIX: Convert the list of dicts into a format the UI can use
+    if poi_list:
+        # Create a dictionary for easy lookup: {name: id}
+        poi_choices_dict = {poi['name']: poi['_id'] for poi in poi_list}
+        
+        # Create the selectbox with just the names
+        destination_name = st.selectbox("Choose Destination:", options=list(poi_choices_dict.keys()))
+        
+        # Get the ID from the selected name
+        destination_poi_id = poi_choices_dict.get(destination_name)
     else:
-        st.info("Waiting for browser location...")
+        destination_name = None
+        destination_poi_id = None
+        st.warning(f"No destinations found for {selected_city}.")
 
-    tab1, tab2 = st.tabs(["📍 Destination", "🎨 Journey Style"])
-    with tab1:
-        st.subheader("Where to?")
-        selected_city = st.selectbox("Select City/Region:", ("Nsukka", "Enugu", "Addis Ababa", "Nairobi"))
-        poi_choices = knowledge_base.get_pois_by_city(selected_city)
-        if poi_choices:
-            destination_name = st.selectbox("Choose Destination:", options=list(poi_choices.keys()))
-        else:
-            destination_name = None
-            st.warning(f"No destinations found for {selected_city}.")
-    with tab2:
-        st.subheader("What kind of journey?")
-        query = st.text_area("Describe your ideal walk:", "A quiet walk with lots of historical relevance.", height=100)
-
-    if st.button("Create My Journey", type="primary", use_container_width=True):
-        if st.session_state.start_location and destination_name:
-            with st.spinner("Crafting your personalized journey..."):
+    # --- Create Journey Button ---
+    st.divider()
+    if st.button("Create My Journey", type="primary", use_container_width=True, disabled=(not destination_poi_id)):
+        if st.session_state.start_location:
+            with st.spinner("Crafting your personalized story... This may take a moment."):
                 try:
+                    # Get destination details
+                    destination_poi = knowledge_base.get_poi_by_id(destination_poi_id)
+                    end_lat = destination_poi['location']['coordinates'][1]
+                    end_lon = destination_poi['location']['coordinates'][0]
+
+                    # Round coordinates for API compatibility
+                    start_lat_rounded = round(st.session_state.start_location['lat'], 5)
+                    start_lon_rounded = round(st.session_state.start_location['lng'], 5)
+                    end_lat_rounded = round(end_lat, 5)
+                    end_lon_rounded = round(end_lon, 5)
+
+                    # Create the request model
                     request = models.JourneyRequest(
-                        user_id=st.session_state.user_id,
-                        latitude=st.session_state.start_location['latitude'],
-                        longitude=st.session_state.start_location['longitude'],
+                        user_id="hackathon_user_01",
+                        latitude=start_lat_rounded,
+                        longitude=start_lon_rounded,
                         city=selected_city,
                         query=query,
-                        destination_poi_id=poi_choices[destination_name]
+                        destination_poi_id=destination_poi_id
                     )
-                    destination_poi = knowledge_base.get_poi_by_id(request.destination_poi_id)
-                    end_lon = destination_poi['location']['coordinates'][0]
-                    end_lat = destination_poi['location']['coordinates'][1]
-                    route_data = services.get_route_from_ors(request.longitude, request.latitude, end_lon, end_lat)
+
+                    # Call backend services
+                    route_data = services.get_route_from_ors(start_lon_rounded, start_lat_rounded, end_lon_rounded, end_lat_rounded)
                     narrative = services.generate_narrative_with_rag(request)
+
+                    # Store results in session state
                     st.session_state.route_data = route_data
                     st.session_state.narrative = narrative
+                    st.session_state.journey_created = True
                     st.success("Your journey is ready!")
-                    st.rerun()
+                    st.rerun() # Rerun to update the main panel
+
                 except Exception as e:
-                    st.error(f"An error occurred: {e}")
-                    traceback.print_exc()
+                    st.error(f"An error occurred while creating your journey: {e}")
         else:
-            st.warning("Please ensure location is set and a destination is selected.")
+            st.warning("Please click on the map to set a starting point first.")
 
-# --- Main Content Area (NEW VERTICAL LAYOUT) ---
-st.header("Your Journey Awaits")
+# --- 4. MAIN PANEL (MAP AND STORY) ---
 
-# 1. The Map (Full Width)
+# --- Map Display ---
 st.subheader("Interactive Map")
-m = folium.Map(location=st.session_state.map_center, zoom_start=15)
 if st.session_state.start_location:
-    folium.Marker([st.session_state.start_location['latitude'], st.session_state.start_location['longitude']], popup="Your Start", icon=folium.Icon(color="blue", icon="user")).add_to(m)
-if st.session_state.route_data:
-    try:
-        points = st.session_state.route_data['geometry']['coordinates']
-        swapped_points = [(p[1], p[0]) for p in points]
-        folium.PolyLine(swapped_points, color="red", weight=5, opacity=0.8).add_to(m)
-        folium.Marker(swapped_points[-1], popup="Your Destination", icon=folium.Icon(color="red", icon="flag")).add_to(m)
-        m.fit_bounds([swapped_points[0], swapped_points[-1]])
-    except (KeyError, IndexError) as e:
-        st.warning(f"Could not display route on map. Error: {e}")
-st_folium(m, width='100%', height=500, returned_objects=[])
+    st.success(f"Start Location Set: {st.session_state.start_location['lat']:.4f}, {st.session_state.start_location['lng']:.4f}")
+else:
+    st.info("Click on the map to set your starting location.")
+
+# Create a Folium map
+map_center = [st.session_state.start_location['lat'], st.session_state.start_location['lng']] if st.session_state.start_location else [6.855, 7.38]
+m = folium.Map(location=map_center, zoom_start=15)
+
+# Add a marker for the start location
+if st.session_state.start_location:
+    folium.Marker(
+        [st.session_state.start_location['lat'], st.session_state.start_location['lng']],
+        popup="Your Start",
+        tooltip="Your Start",
+        icon=folium.Icon(color="blue", icon="user")
+    ).add_to(m)
+
+# Draw route on the map if it exists
+if st.session_state.journey_created and st.session_state.route_data:
+    points = st.session_state.route_data['points']
+    swapped_points = [(p[1], p[0]) for p in points] # Swap (lon, lat) to (lat, lon) for Folium
+    folium.PolyLine(swapped_points, color="red", weight=5, opacity=0.8).add_to(m)
+    
+    # Add destination marker
+    folium.Marker(
+        swapped_points[-1], # The last point is the destination
+        popup="Destination",
+        tooltip="Destination",
+        icon=folium.Icon(color="red", icon="flag")
+    ).add_to(m)
+    
+    # Auto-zoom to fit the route
+    m.fit_bounds(swapped_points)
+
+# Display the map
+map_data = st_folium(m, width='100%', height=450)
+
+# Update start location on map click
+if map_data and map_data.get("last_clicked"):
+    clicked_coords = map_data["last_clicked"]
+    st.session_state.start_location = clicked_coords
+    st.rerun()
 
 st.divider()
 
-# 2. The Generated Story (Full Width, Underneath the Map)
-st.subheader("Generated Story")
-if st.session_state.narrative and st.session_state.route_data:
+# --- Story Display ---
+st.subheader("Your Generated Journey")
+if st.session_state.journey_created and st.session_state.narrative:
     narrative = st.session_state.narrative
     route_data = st.session_state.route_data
+    
+    metric_col1, metric_col2 = st.columns(2)
     try:
-        duration_min = route_data['routes'][0]['duration'] / 60
-        distance_km = route_data['routes'][0]['distance'] / 1000
-        # Use columns just for the metrics to keep them side-by-side
-        metric_col1, metric_col2 = st.columns(2)
-        with metric_col1:
-            st.metric(label="🚶‍♀️ Est. Time", value=f"{duration_min:.0f} min")
-        with metric_col2:
-            st.metric(label="📏 Distance", value=f"{distance_km:.2f} km")
+        duration_min = route_data['duration'] / 60
+        distance_km = route_data['distance'] / 1000
+        with metric_col1: st.metric(label="🚶‍♀️ Est. Walk Time", value=f"{duration_min:.0f} min")
+        with metric_col2: st.metric(label="📏 Distance", value=f"{distance_km:.2f} km")
     except (KeyError, IndexError):
         st.info("Route metrics not available.")
     
@@ -122,4 +181,4 @@ if st.session_state.narrative and st.session_state.route_data:
     st.success(f"**Fun Fact:** {narrative.fun_fact}")
 else:
     st.info("Your journey's story and details will appear here.")
-        
+    
