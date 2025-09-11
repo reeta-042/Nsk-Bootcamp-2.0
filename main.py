@@ -45,7 +45,7 @@ if "selected_city" not in st.session_state: st.session_state.selected_city = "Ns
 if "selected_destination_id" not in st.session_state: st.session_state.selected_destination_id = None
 if "journey_narrative" not in st.session_state: st.session_state.journey_narrative = None
 if "journey_route_data" not in st.session_state: st.session_state.journey_route_data = None
-if "destination_poi_only" not in st.session_state: st.session_state.destination_poi_only = None 
+if "destination_poi_only" not in st.session_state: st.session_state.destination_poi_only = None
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Welcome! I am your personal tour guide. Once you create a journey, you can ask me anything about it here."}]
 if "user_id" not in st.session_state: st.session_state.user_id = "hackathon_user_01"
@@ -131,7 +131,6 @@ with tab1:
 
                     route_data = services.get_route_from_ors(start_lon, start_lat, end_lon, end_lat, travel_mode=selected_mode_api)
 
-                    # --- GRACEFUL FALLBACK LOGIC ---
                     if route_data is None:
                         st.warning(f"Could not find a {selected_mode_label.lower()} route to this destination. The location may be inaccessible by this mode of transport.")
                         st.session_state.journey_narrative = None
@@ -139,7 +138,6 @@ with tab1:
                         st.session_state.destination_poi_only = dest_poi
                         st.rerun()
                     else:
-                        # Normal success path
                         request = models.JourneyRequest(
                             user_id=st.session_state.user_id, latitude=start_lat, longitude=start_lon,
                             city=st.session_state.selected_city, query=default_journey_query,
@@ -152,18 +150,15 @@ with tab1:
                             request=request,
                             destination_name=dest_poi['name']
                         )
-
                         st.session_state.journey_narrative = narrative
                         st.session_state.journey_route_data = route_data
-                        st.session_state.destination_poi_only = None # Clear fallback state
+                        st.session_state.destination_poi_only = None
                         st.rerun()
 
                 except Exception as e:
                     st.error(f"An error occurred while creating your journey: {e}")
                     traceback.print_exc()
 
-    # --- MAP DRAWING LOGIC ---
-    # Case 1: Fallback - No route, just show the destination POI
     if st.session_state.destination_poi_only:
         dest_poi = st.session_state.destination_poi_only
         if dest_poi:
@@ -172,7 +167,6 @@ with tab1:
                 popup=dest_poi['name'], tooltip=dest_poi['name'], icon=folium.Icon(color="red", icon="flag")
             ).add_to(m)
 
-    # Case 2: Success - A full journey exists
     elif st.session_state.journey_route_data and st.session_state.journey_narrative:
         dest_poi = knowledge_base.get_poi_by_id(st.session_state.selected_destination_id)
         if dest_poi:
@@ -180,7 +174,6 @@ with tab1:
                 [dest_poi['location']['coordinates'][1], dest_poi['location']['coordinates'][0]],
                 popup=dest_poi['name'], tooltip=dest_poi['name'], icon=folium.Icon(color="red", icon="flag")
             ).add_to(m)
-
             points = st.session_state.journey_route_data['points']
             swapped_points = [(p[1], p[0]) for p in points]
             folium.PolyLine(swapped_points, color="red", weight=5, opacity=0.8).add_to(m)
@@ -189,34 +182,83 @@ with tab1:
     st_folium(m, width='100%', height=350)
     st.divider()
 
-    # --- NARRATIVE DISPLAY LOGIC ---
     if st.session_state.journey_narrative and st.session_state.journey_route_data:
         narrative = st.session_state.journey_narrative
         route_data = st.session_state.journey_route_data
-
         st.subheader("Your Generated Journey")
         metric_col1, metric_col2 = st.columns(2)
         duration_min = route_data['duration'] / 60
         distance_km = route_data['distance'] / 1000
-        
         icon = "🚶‍♀️" if selected_mode_api == "foot-walking" else "🚗"
         metric_col1.metric(label=f"{icon} Est. Travel Time", value=f"{duration_min:.0f} min")
         metric_col2.metric(label="📏 Distance", value=f"{distance_km:.2f} km")
-
         st.markdown(f"### {narrative.title}")
         st.markdown(f"*{narrative.location_awareness}*")
         st.markdown(narrative.narrative)
         st.success(f"**Fun Fact:** {narrative.fun_fact}")
-
         st.divider()
         st.markdown("**Did you find this journey useful?**")
-        feedback_col1, feedback_col2, _ = st.columns([1, 1, 4])
-
+        
+        # --- FIX: Correctly define columns for feedback buttons ---
+        feedback_col1, feedback_col2 = st.columns(2)
         feedback_query = "A general journey to the destination."
-        if feedback_col1.button("👍 Yes", key="like_journey"):
-            with st.spinner("Learning from your feedback..."):
-                reflection_request = models.ReflectionRequest(
-                    user_id=st.session_state.user_id, original_query=feedback_query,
-                    journey_title=narrative.title, user_feedback="liked"
+
+        with feedback_col1:
+            if st.button("👍 Yes", key="like_journey", use_container_width=True):
+                with st.spinner("Learning from your feedback..."):
+                    reflection_request = models.ReflectionRequest(
+                        user_id=st.session_state.user_id, original_query=feedback_query,
+                        journey_title=narrative.title, user_feedback="liked"
+                    )
+                    services.reflect_and_update_preferences(st.session_state.llm, reflection_request)
+        
+        with feedback_col2:
+            if st.button("👎 No", key="dislike_journey", use_container_width=True):
+                with st.spinner("Learning from your feedback..."):
+                    reflection_request = models.ReflectionRequest(
+                        user_id=st.session_state.user_id, original_query=feedback_query,
+                        journey_title=narrative.title, user_feedback="disliked"
+                    )
+                    services.reflect_and_update_preferences(st.session_state.llm, reflection_request)
+    else:
+        if not st.session_state.destination_poi_only:
+            st.info("To begin, select your travel mode and destination in the sidebar, then click 'Create My Journey'.")
+
+# --- FIX: Restore the chat interface logic ---
+with tab2:
+    st.subheader("Talk with the Tourist Guide")
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("Ask a follow-up question..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    if st.session_state.journey_narrative:
+                        conversation_history = " ".join([m['content'] for m in st.session_state.messages])
+                        dest_poi = knowledge_base.get_poi_by_id(st.session_state.selected_destination_id)
+
+                        response_content = services.generate_chat_response(
+                            llm=st.session_state.llm,
+                            user_id=st.session_state.user_id, city=st.session_state.selected_city,
+                            destination_name=dest_poi['name'], journey_narrative=st.session_state.journey_narrative,
+                            conversation_history=conversation_history
                         )
-                     
+                        st.markdown(response_content)
+                        st.session_state.messages.append({"role": "assistant", "content": response_content})
+                    else:
+                        st.warning("Please create a journey first before asking questions.")
+                        st.session_state.messages.append({"role": "assistant", "content": "I can only answer questions about a journey after you've created one. Please go to the 'Your Journey' tab and click 'Create My Journey'."})
+
+                except Exception as e:
+                    error_message = f"I'm sorry, I encountered an error: {e}"
+                    st.error(error_message)
+                    st.session_state.messages.append({"role": "assistant", "content": error_message})
+                    traceback.print_exc()
+    
