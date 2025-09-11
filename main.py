@@ -9,9 +9,6 @@ from dotenv import load_dotenv
 import traceback
 import os
 
-# --- DEFINITIVE AUTHENTICATION FIX ---
-# Import AnonymousCredentials, the official way to bypass credential searches.
-from google.auth.credentials import AnonymousCredentials
 from sentence_transformers import SentenceTransformer
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import PydanticOutputParser
@@ -20,30 +17,30 @@ from app import services, models, knowledge_base
 
 # --- 1. INITIALIZATION & PAGE CONFIG ---
 st.set_page_config(page_title="Hometown Atlas", page_icon="🗺️", layout="wide", initial_sidebar_state="expanded")
+# load_dotenv() is still useful for local testing with a .env file
 load_dotenv()
 
 @st.cache_resource
-def initialize_models():
+def waking_up_maps_🗺️():
     """
     Loads and caches all necessary AI models and parsers.
     This function runs only once per session.
     """
-    # Use AnonymousCredentials to explicitly tell the library to NOT search for
-    # any other credentials and to rely solely on the provided API key.
-    # This is the permanent solution to the `metadata.google.internal` error.
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    # --- FINAL AUTHENTICATION FIX ---
+    # The `langchain-google-genai` library is designed to automatically find the
+    # `GOOGLE_API_KEY` from the environment variables. Streamlit Cloud automatically
+    # loads secrets into the environment, so we don't need to pass any auth parameters.
+    # This is the cleanest approach and avoids all previous errors.
     st.session_state.llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-pro",
-        google_api_key=GEMINI_API_KEY,
-        credentials=AnonymousCredentials(),
         transport="rest",
-        request_timeout=120
+        timeout=120 # Corrected parameter name from 'request_timeout'
     )
     st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
     st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
 
 # Run model initialization
-initialize_models()
+waking_up_maps_🗺️()
 
 # --- 2. SESSION STATE MANAGEMENT ---
 # Initialize all necessary keys for the app's state.
@@ -122,7 +119,7 @@ with tab1:
 
     # --- JOURNEY CREATION LOGIC ---
     if create_journey_button:
-        # The user no longer needs to provide a query. We use a default internal query.
+        # A default internal query is used as the user no longer provides one upfront.
         default_journey_query = "A detailed and engaging travel narrative for a walk to the destination."
 
         if not st.session_state.selected_destination_id:
@@ -190,7 +187,6 @@ with tab1:
         st.markdown("**Did you find this journey useful?**")
         feedback_col1, feedback_col2, _ = st.columns([1, 1, 4])
 
-        # A default query is used for feedback since the user provides none
         feedback_query = "A general journey to the destination."
         if feedback_col1.button("👍 Yes", key="like_journey"):
             with st.spinner("Learning from your feedback..."):
@@ -246,4 +242,4 @@ with tab2:
                     st.error(error_message)
                     st.session_state.messages.append({"role": "assistant", "content": error_message})
                     traceback.print_exc()
-    
+        
