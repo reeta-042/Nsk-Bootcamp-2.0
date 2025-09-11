@@ -17,29 +17,36 @@ from app import services, models, knowledge_base
 
 # --- 1. INITIALIZATION & PAGE CONFIG ---
 st.set_page_config(page_title="Hometown Atlas", page_icon="🗺️", layout="wide", initial_sidebar_state="expanded")
-# load_dotenv() is still useful for local testing with a .env file
 load_dotenv()
 
-@st.cache_resource
+# --- DEFINITIVE MODEL INITIALIZATION FIX ---
 def initialize_models():
     """
-    Loads and caches all necessary AI models and parsers.
-    This function runs only once per session.
+    Checks if the AI models are in the session state and initializes them if not.
+    This is called on every rerun to ensure models are always available.
+    This replaces @st.cache_resource to prevent race conditions and caching issues.
     """
-    
-    st.session_state.llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-pro",
-        transport="rest",
-        timeout=120 # Corrected parameter name from 'request_timeout'
-    )
-    st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-    st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
+    if "llm" not in st.session_state:
+        with st.spinner("Warming up the AI guide..."):
+            try:
+                st.session_state.llm = ChatGoogleGenerativeAI(
+                    model="gemini-2.5-pro",
+                    transport="rest",
+                    timeout=120
+                )
+                st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+                st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
+            except Exception as e:
+                # If initialization fails, show an error and stop the app.
+                st.error(f"Fatal Error: Could not initialize AI models. Please check your API keys and environment. Error: {e}")
+                st.stop()
 
-# Run model initialization
+# Call the initialization function at the absolute start of the script execution.
 initialize_models()
 
+
 # --- 2. SESSION STATE MANAGEMENT ---
-# Initialize all necessary keys for the app's state.
+# Initialize all other necessary keys for the app's state.
 if "start_location" not in st.session_state: st.session_state.start_location = None
 if "selected_city" not in st.session_state: st.session_state.selected_city = "Nsukka"
 if "selected_destination_id" not in st.session_state: st.session_state.selected_destination_id = None
@@ -55,11 +62,9 @@ with st.sidebar:
     st.markdown("Your AI-powered tourist companion.")
     st.divider()
 
-    # Section 1: Destination Selection
     st.subheader("1. Select Your Destination")
     st.session_state.selected_city = st.selectbox("Select City/Region:", ("Nsukka", "Enugu", "Addis Ababa", "Nairobi", "Lagos", "Kenya", "Ethiopia"))
 
-    # Section 2: Advanced Filtering
     st.subheader("2. Filter Your Options")
     available_budgets = ["Any"] + knowledge_base.get_unique_budgets_by_city(st.session_state.selected_city)
     selected_budget = st.selectbox("Budget Level:", options=available_budgets)
@@ -67,7 +72,6 @@ with st.sidebar:
     available_tags = knowledge_base.get_unique_tags_by_city(st.session_state.selected_city)
     selected_tags = st.multiselect("Interests / Tags:", options=available_tags)
 
-    # Dynamically filtered list of Points of Interest (POIs)
     poi_list = knowledge_base.get_pois_by_city(st.session_state.selected_city, selected_tags, selected_budget)
     poi_choices_dict = {poi['name']: poi['_id'] for poi in poi_list}
 
@@ -86,18 +90,15 @@ with st.sidebar:
         st.warning("No destinations match your filters.")
         st.session_state.selected_destination_id = None
 
-    # Main action button
     st.divider()
     create_journey_button = st.button("Create My Journey", type="primary", use_container_width=True)
 
 # --- 4. MAIN PANEL (UI TABS) ---
 tab1, tab2 = st.tabs(["📍 Your Journey", "💬 Talk with the Guide"])
 
-# --- TAB 1: JOURNEY DISPLAY ---
 with tab1:
     st.subheader("🗺️ Hometown Atlas Interactive Map")
 
-    # Get user's location once at the start of the session
     if st.session_state.start_location is None:
         location = get_geolocation()
         if location:
@@ -113,9 +114,7 @@ with tab1:
             popup="Your Location", tooltip="Your Location", icon=folium.Icon(color="blue", icon="user")
         ).add_to(m)
 
-    # --- JOURNEY CREATION LOGIC ---
     if create_journey_button:
-        # A default internal query is used as the user no longer provides one upfront.
         default_journey_query = "A detailed and engaging travel narrative for a walk to the destination."
 
         if not st.session_state.selected_destination_id:
@@ -137,7 +136,6 @@ with tab1:
                         city=st.session_state.selected_city, query=default_journey_query,
                         destination_poi_id=st.session_state.selected_destination_id
                     )
-                    # Pass the initialized models to the service function
                     narrative = services.generate_narrative_with_rag(
                         llm=st.session_state.llm,
                         embedding_model=st.session_state.embedding_model,
@@ -154,18 +152,21 @@ with tab1:
                     st.error(f"An error occurred while creating your journey: {e}")
                     traceback.print_exc()
 
-    # --- DISPLAY THE GENERATED JOURNEY ---
     if st.session_state.journey_route_data and st.session_state.journey_narrative:
         dest_poi = knowledge_base.get_poi_by_id(st.session_state.selected_destination_id)
-        folium.Marker(
-            [dest_poi['location']['coordinates'][1], dest_poi['location']['coordinates'][0]],
-            popup=dest_poi['name'], tooltip=dest_poi['name'], icon=folium.Icon(color="red", icon="flag")
-        ).add_to(m)
+        
+        # --- "NO DESTINATION" FIX ---
+        # Add a guard clause to ensure dest_poi exists before trying to use it.
+        if dest_poi:
+            folium.Marker(
+                [dest_poi['location']['coordinates'][1], dest_poi['location']['coordinates'][0]],
+                popup=dest_poi['name'], tooltip=dest_poi['name'], icon=folium.Icon(color="red", icon="flag")
+            ).add_to(m)
 
-        points = st.session_state.journey_route_data['points']
-        swapped_points = [(p[1], p[0]) for p in points]
-        folium.PolyLine(swapped_points, color="red", weight=5, opacity=0.8).add_to(m)
-        m.fit_bounds(swapped_points)
+            points = st.session_state.journey_route_data['points']
+            swapped_points = [(p[1], p[0]) for p in points]
+            folium.PolyLine(swapped_points, color="red", weight=5, opacity=0.8).add_to(m)
+            m.fit_bounds(swapped_points)
 
     st_folium(m, width='100%', height=350)
     st.divider()
@@ -197,7 +198,6 @@ with tab1:
                     user_id=st.session_state.user_id, original_query=feedback_query,
                     journey_title=narrative.title, user_feedback="liked"
                 )
-                # Pass the initialized llm to the service function
                 services.reflect_and_update_preferences(st.session_state.llm, reflection_request)
 
         if feedback_col2.button("👎 No", key="dislike_journey"):
@@ -206,12 +206,10 @@ with tab1:
                     user_id=st.session_state.user_id, original_query=feedback_query,
                     journey_title=narrative.title, user_feedback="disliked"
                 )
-                # Pass the initialized llm to the service function
                 services.reflect_and_update_preferences(st.session_state.llm, reflection_request)
     else:
         st.info("To begin, select a destination in the sidebar and click 'Create My Journey'.")
 
-# --- TAB 2: CHAT INTERFACE ---
 with tab2:
     st.subheader("Talk with the Tourist Guide")
 
@@ -231,7 +229,6 @@ with tab2:
                         conversation_history = " ".join([m['content'] for m in st.session_state.messages])
                         dest_poi = knowledge_base.get_poi_by_id(st.session_state.selected_destination_id)
 
-                        # Pass the initialized llm to the service function
                         response_content = services.generate_chat_response(
                             llm=st.session_state.llm,
                             user_id=st.session_state.user_id, city=st.session_state.selected_city,
@@ -249,4 +246,4 @@ with tab2:
                     st.error(error_message)
                     st.session_state.messages.append({"role": "assistant", "content": error_message})
                     traceback.print_exc()
-                
+                    
