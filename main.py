@@ -6,27 +6,24 @@ from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
 import numpy as np
 from dotenv import load_dotenv
-import traceback # <-- Import for detailed error logging
+import traceback
 import os
-# Import necessary components for initialization
+
 from sentence_transformers import SentenceTransformer
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import PydanticOutputParser
 
-# Import our app modules
 from app import services, models, knowledge_base
 
 # --- 1. INITIALIZATION ---
 load_dotenv()
 if 'models_initialized' not in st.session_state:
     with st.spinner("Warming up the AI storyteller... This may take a moment on first load."):
-        print("--- Initializing AI Models ---")
         GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
         st.session_state.models_initialized = True
-        print("--- AI Models Initialized and Stored in Session State ---")
 
 # --- 2. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -45,7 +42,7 @@ if "route_data" not in st.session_state:
     st.session_state.route_data = None
 if "narrative" not in st.session_state:
     st.session_state.narrative = None
-if "last_error" not in st.session_state: # <-- For sticky error messages
+if "last_error" not in st.session_state:
     st.session_state.last_error = None
 
 # --- 4. GET USER'S LOCATION ---
@@ -91,64 +88,48 @@ with st.sidebar:
 
     st.divider()
     if st.button("Create My Journey", type="primary", use_container_width=True, disabled=(not destination_poi_id)):
-        # Clear previous errors and results
         st.session_state.last_error = None
         st.session_state.journey_created = False
         
         if st.session_state.start_location:
             with st.spinner("Crafting your personalized story..."):
                 try:
-                    print("\n--- 'Create My Journey' CLICKED ---")
-                    
-                    print("1. Fetching destination POI...")
                     destination_poi = knowledge_base.get_poi_by_id(destination_poi_id)
                     end_lat = destination_poi['location']['coordinates'][1]
                     end_lon = destination_poi['location']['coordinates'][0]
-                    print(f"   - Destination: {destination_poi.get('name')}")
 
                     start_lat_rounded = round(st.session_state.start_location['lat'], 5)
                     start_lon_rounded = round(st.session_state.start_location['lng'], 5)
                     end_lat_rounded = round(end_lat, 5)
                     end_lon_rounded = round(end_lon, 5)
-                    print(f"   - Coords: Start=({start_lat_rounded}, {start_lon_rounded}), End=({end_lat_rounded}, {end_lon_rounded})")
 
                     request = models.JourneyRequest(
                         user_id="hackathon_user_01", latitude=start_lat_rounded, longitude=start_lon_rounded,
                         city=selected_city, query=query, destination_poi_id=destination_poi_id
                     )
 
-                    print("2. Calling OpenRouteService...")
-                    route_data = services.get_route_from_ors(start_lon_rounded, start_lat_rounded, end_lon_rounded, end_lon_rounded)
-                    print("   - ORS call successful.")
-
-                    print("3. Calling Narrative Generation (RAG)...")
+                    # THE DEFINITIVE FIX IS HERE:
+                    # The last argument was wrong. It should be end_lon_rounded, end_lat_rounded
+                    route_data = services.get_route_from_ors(start_lon_rounded, start_lat_rounded, end_lon_rounded, end_lat_rounded)
+                    
                     narrative = services.generate_narrative_with_rag(request)
-                    print("   - RAG call successful.")
 
-                    # Store results in session state
                     st.session_state.route_data = route_data
                     st.session_state.narrative = narrative
                     st.session_state.journey_created = True
-                    print("4. Journey created successfully. Rerunning.")
                     st.rerun()
 
                 except Exception as e:
-                    # THE FIX: Make the error loud and sticky
-                    print("---! AN ERROR OCCURRED !---")
-                    # Print the full error traceback to the logs
                     traceback.print_exc()
                     st.session_state.last_error = f"An error occurred: {e}"
-                    st.rerun() # Rerun to show the error message
+                    st.rerun()
         else:
             st.warning("Please click on the map to set a starting point first.")
 
-    # Display the sticky error message if it exists
     if st.session_state.last_error:
         st.error(st.session_state.last_error)
 
-
 # --- 6. MAIN PANEL (MAP AND STORY) ---
-# (The rest of the file is identical and correct)
 st.subheader("Interactive Map")
 if st.session_state.start_location:
     st.success(f"Start Location Set: {st.session_state.start_location['lat']:.4f}, {st.session_state.start_location['lng']:.4f}")
@@ -199,4 +180,4 @@ if st.session_state.journey_created and st.session_state.narrative:
     st.success(f"**Fun Fact:** {narrative.fun_fact}")
 else:
     st.info("Your journey's story and details will appear here.")
-                    
+    
