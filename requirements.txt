@@ -1,30 +1,18 @@
 # requirements.txt
 
-# --- Core Framework ---
-streamlit==1.36.0
-streamlit-js-eval==0.1.5
-
-# --- AI & LangChain (Updated to resolve all dependency conflicts) ---
-# Pinned to versions compatible with Python 3.13 and LangChain v0.2.x
-torch==2.5.0
-sentence-transformers==2.7.0
-langchain==0.2.1
-langchain-core==0.2.1
-langchain-google-genai==1.0.6
-faiss-cpu==1.9.0.post1
-
-# --- APIs & Database ---
-openrouteservice-py==2.3.0
-pymongo[srv]==4.7.2
-httpx==0.27.0
-
-# --- Data Handling & Validation ---
-pydantic==2.7.1
-numpy==1.26.4
-
-# --- Mapping ---
-folium==0.16.0
-streamlit-folium==0.19.1
-
-# --- Utilities ---
-python-dotenv==1.0.1
+# --- Let the installer figure it out ---
+streamlit
+streamlit-js-eval
+sentence-transformers
+langchain
+langchain-core
+langchain-google-genai
+faiss-cpu
+openrouteservice-py
+pymongo[srv]
+httpx
+pydantic
+numpy
+folium
+streamlit-folium
+python-dotenv
