@@ -1,23 +1,48 @@
-
+# main.py
 
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
 import numpy as np
+from dotenv import load_dotenv
 
-# The services import will now trigger the new, safe caching
+# Import necessary components for initialization
+from sentence_transformers import SentenceTransformer
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.output_parsers import PydanticOutputParser
+
+# Import our app modules
 from app import services, models, knowledge_base
 
-# --- 1. PAGE CONFIGURATION ---
+# --- 1. INITIALIZATION (THE DEFINITIVE FIX) ---
+# Load environment variables at the very start
+load_dotenv()
+
+# This block runs ONCE and populates session_state before anything else.
+if 'models_initialized' not in st.session_state:
+    with st.spinner("Warming up the AI storyteller... This may take a moment on first load."):
+        print("--- Initializing AI Models ---")
+        GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+        
+        # Initialize and store each model in session state
+        st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=GEMINI_API_KEY)
+        st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
+        
+        # Set a flag to prevent this from running again
+        st.session_state.models_initialized = True
+        print("--- AI Models Initialized and Stored in Session State ---")
+
+# --- 2. PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="UrbanScribe",
+    page_title="Hometown Atlas",
     page_icon="🗺️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. SESSION STATE INITIALIZATION ---
+# --- 3. SESSION STATE FOR JOURNEY DATA ---
 if "start_location" not in st.session_state:
     st.session_state.start_location = None
 if "journey_created" not in st.session_state:
@@ -27,7 +52,7 @@ if "route_data" not in st.session_state:
 if "narrative" not in st.session_state:
     st.session_state.narrative = None
 
-# --- 3. GET USER'S LOCATION ---
+# --- 4. GET USER'S LOCATION ---
 if st.session_state.start_location is None:
     location = get_geolocation()
     if location:
@@ -37,16 +62,16 @@ if st.session_state.start_location is None:
         }
         st.rerun()
 
-# --- 4. SIDEBAR (USER INPUT) ---
+# --- 5. SIDEBAR (USER INPUT) ---
 with st.sidebar:
-    st.title("UrbanScribe")
+    st.title("Hometown Atlas")
     st.markdown("Your AI-powered travel companion.")
     st.divider()
 
     st.subheader("1. Describe Your Journey")
     query = st.text_area(
         "What kind of journey are you looking for?",
-        "A quiet walk with lots of historical relevance",
+        "A quiet journey with historical significance ",
         height=100,
         placeholder="e.g., 'A vibrant market tour' or 'A peaceful park walk'"
     )
@@ -71,7 +96,7 @@ with st.sidebar:
     st.divider()
     if st.button("Create My Journey", type="primary", use_container_width=True, disabled=(not destination_poi_id)):
         if st.session_state.start_location:
-            with st.spinner("Crafting your personalized story... This may take a moment."):
+            with st.spinner("Crafting your personalized story..."):
                 try:
                     destination_poi = knowledge_base.get_poi_by_id(destination_poi_id)
                     end_lat = destination_poi['location']['coordinates'][1]
@@ -105,7 +130,7 @@ with st.sidebar:
         else:
             st.warning("Please click on the map to set a starting point first.")
 
-# --- 5. MAIN PANEL (MAP AND STORY) ---
+# --- 6. MAIN PANEL (MAP AND STORY) ---
 st.subheader("Interactive Map")
 if st.session_state.start_location:
     st.success(f"Start Location Set: {st.session_state.start_location['lat']:.4f}, {st.session_state.start_location['lng']:.4f}")
@@ -165,4 +190,4 @@ if st.session_state.journey_created and st.session_state.narrative:
     st.success(f"**Fun Fact:** {narrative.fun_fact}")
 else:
     st.info("Your journey's story and details will appear here.")
-    
+        
