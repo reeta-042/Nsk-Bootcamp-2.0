@@ -21,7 +21,7 @@ st.set_page_config(page_title="Hometown Atlas", page_icon="🗺️", layout="wid
 load_dotenv()
 
 @st.cache_resource
-def waking_up_maps_🗺️():
+def waking_up():
     """
     Loads and caches all necessary AI models and parsers.
     This function runs only once per session.
@@ -40,7 +40,7 @@ def waking_up_maps_🗺️():
     st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
 
 # Run model initialization
-waking_up_maps_🗺️()
+waking_up()
 
 # --- 2. SESSION STATE MANAGEMENT ---
 # Initialize all necessary keys for the app's state.
