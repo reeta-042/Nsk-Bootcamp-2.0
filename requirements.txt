@@ -4,13 +4,14 @@
 streamlit==1.36.0
 streamlit-js-eval==0.1.5
 
-# --- AI & LangChain ---
-# Pinned to versions compatible with the Python 3.13 environment on Streamlit Cloud.
+# --- AI & LangChain (Updated to resolve all dependency conflicts) ---
+# Pinned to versions compatible with Python 3.13 and LangChain v0.2.x
 torch==2.5.0
 sentence-transformers==2.7.0
-langchain==0.1.20
-langchain-google-genai==1.0.5
-faiss-cpu==1.8.0
+langchain==0.2.1
+langchain-core==0.2.1
+langchain-google-genai==1.0.6
+faiss-cpu==1.9.0.post1
 
 # --- APIs & Database ---
 openrouteservice-py==2.3.0
