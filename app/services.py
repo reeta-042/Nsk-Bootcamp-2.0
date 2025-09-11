@@ -27,7 +27,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Check if the models are already in Streamlit's session state
 if 'llm' not in st.session_state:
     print("--- Initializing Gemini LLM... ---")
-    st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=GEMINI_API_KEY)
+    st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
 
 if 'embedding_model' not in st.session_state:
     print("--- Initializing Sentence Transformer model... ---")
