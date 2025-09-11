@@ -22,7 +22,7 @@ if 'models_initialized' not in st.session_state:
     with st.spinner("Warming up the AI storyteller... This may take a moment on first load."):
         print("--- Initializing AI Models ---")
         GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-        st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GEMINI_API_KEY)
+        st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GEMINI_API_KEY)
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
         st.session_state.models_initialized = True
