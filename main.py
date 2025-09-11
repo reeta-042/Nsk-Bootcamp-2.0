@@ -7,7 +7,7 @@ from streamlit_js_eval import get_geolocation
 import numpy as np
 from dotenv import load_dotenv
 import traceback
-import os # <-- Import os
+import os 
 
 from sentence_transformers import SentenceTransformer
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -26,7 +26,7 @@ if 'models_initialized' not in st.session_state:
         transport_options = {"timeout": 60} # Give up after 60 seconds
         
         st.session_state.llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
+            model="gemini-2.5-flash",
             transport="rest", # Use REST instead of gRPC for better compatibility
             client_options=client_options,
             transport_options=transport_options
