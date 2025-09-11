@@ -19,34 +19,27 @@ from app import services, models, knowledge_base
 st.set_page_config(page_title="Hometown Atlas", page_icon="🗺️", layout="wide", initial_sidebar_state="expanded")
 load_dotenv()
 
-# --- DEFINITIVE MODEL INITIALIZATION FIX ---
 def initialize_models():
     """
     Checks if the AI models are in the session state and initializes them if not.
-    This is called on every rerun to ensure models are always available.
-    This replaces @st.cache_resource to prevent race conditions and caching issues.
     """
     if "llm" not in st.session_state:
         with st.spinner("Warming up the AI guide..."):
             try:
                 st.session_state.llm = ChatGoogleGenerativeAI(
-                    model="gemini-2.5-pro",
+                    model="gemini-pro",
                     transport="rest",
                     timeout=120
                 )
                 st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
                 st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
             except Exception as e:
-                # If initialization fails, show an error and stop the app.
                 st.error(f"Fatal Error: Could not initialize AI models. Please check your API keys and environment. Error: {e}")
                 st.stop()
 
-# Call the initialization function at the absolute start of the script execution.
 initialize_models()
 
-
 # --- 2. SESSION STATE MANAGEMENT ---
-# Initialize all other necessary keys for the app's state.
 if "start_location" not in st.session_state: st.session_state.start_location = None
 if "selected_city" not in st.session_state: st.session_state.selected_city = "Nsukka"
 if "selected_destination_id" not in st.session_state: st.session_state.selected_destination_id = None
@@ -62,7 +55,13 @@ with st.sidebar:
     st.markdown("Your AI-powered tourist companion.")
     st.divider()
 
-    st.subheader("1. Select Your Destination")
+    st.subheader("1. Select Your Journey")
+    
+    # --- NEW: Travel Mode Selector ---
+    travel_mode_options = {"Walking": "foot-walking", "Driving": "driving-car"}
+    selected_mode_label = st.selectbox("Travel Mode:", options=list(travel_mode_options.keys()))
+    selected_mode_api = travel_mode_options[selected_mode_label]
+
     st.session_state.selected_city = st.selectbox("Select City/Region:", ("Nsukka", "Enugu", "Addis Ababa", "Nairobi", "Lagos", "Kenya", "Ethiopia"))
 
     st.subheader("2. Filter Your Options")
@@ -115,7 +114,7 @@ with tab1:
         ).add_to(m)
 
     if create_journey_button:
-        default_journey_query = "A detailed and engaging travel narrative for a walk to the destination."
+        default_journey_query = f"A detailed and engaging travel narrative for a {selected_mode_label.lower()} journey to the destination."
 
         if not st.session_state.selected_destination_id:
             st.error("Please choose a destination from the sidebar.")
@@ -130,7 +129,9 @@ with tab1:
                     end_lat = round(dest_poi['location']['coordinates'][1], 5)
                     end_lon = round(dest_poi['location']['coordinates'][0], 5)
 
-                    route_data = services.get_route_from_ors(start_lon, start_lat, end_lon, end_lat)
+                    # --- UPDATE: Pass the selected travel mode to the service function ---
+                    route_data = services.get_route_from_ors(start_lon, start_lat, end_lon, end_lat, travel_mode=selected_mode_api)
+                    
                     request = models.JourneyRequest(
                         user_id=st.session_state.user_id, latitude=start_lat, longitude=start_lon,
                         city=st.session_state.selected_city, query=default_journey_query,
@@ -155,8 +156,6 @@ with tab1:
     if st.session_state.journey_route_data and st.session_state.journey_narrative:
         dest_poi = knowledge_base.get_poi_by_id(st.session_state.selected_destination_id)
         
-        # --- "NO DESTINATION" FIX ---
-        # Add a guard clause to ensure dest_poi exists before trying to use it.
         if dest_poi:
             folium.Marker(
                 [dest_poi['location']['coordinates'][1], dest_poi['location']['coordinates'][0]],
@@ -179,7 +178,10 @@ with tab1:
         metric_col1, metric_col2 = st.columns(2)
         duration_min = route_data['duration'] / 60
         distance_km = route_data['distance'] / 1000
-        metric_col1.metric(label="🚶‍♀️ Est. Walk Time", value=f"{duration_min:.0f} min")
+        
+        # Display appropriate icon based on travel mode
+        icon = "🚶‍♀️" if selected_mode_api == "foot-walking" else "🚗"
+        metric_col1.metric(label=f"{icon} Est. Travel Time", value=f"{duration_min:.0f} min")
         metric_col2.metric(label="📏 Distance", value=f"{distance_km:.2f} km")
 
         st.markdown(f"### {narrative.title}")
@@ -208,7 +210,7 @@ with tab1:
                 )
                 services.reflect_and_update_preferences(st.session_state.llm, reflection_request)
     else:
-        st.info("To begin, select a destination in the sidebar and click 'Create My Journey'.")
+        st.info("To begin, select your travel mode and destination in the sidebar, then click 'Create My Journey'.")
 
 with tab2:
     st.subheader("Talk with the Tourist Guide")
@@ -246,4 +248,4 @@ with tab2:
                     st.error(error_message)
                     st.session_state.messages.append({"role": "assistant", "content": error_message})
                     traceback.print_exc()
-                    
+                
