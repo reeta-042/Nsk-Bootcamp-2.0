@@ -25,12 +25,14 @@ if 'models_initialized' not in st.session_state:
         client_options = {"api_key": GEMINI_API_KEY}
         transport_options = {"timeout": 60} # Give up after 60 seconds
         
-        st.session_state.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            transport="rest", # Use REST instead of gRPC for better compatibility
-            client_options=client_options,
-            transport_options=transport_options
-        )
+         st.session_state.llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-pro",
+    transport="rest",
+    client_options=client_options,
+    model_kwargs={"request_timeout": 60} 
+         )
+        
+        
         
         st.session_state.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         st.session_state.parser = PydanticOutputParser(pydantic_object=models.JourneyNarrative)
@@ -55,7 +57,7 @@ if st.session_state.start_location is None:
 
 # --- 5. SIDEBAR (USER INPUT) ---
 with st.sidebar:
-    st.title("UrbanScribe")
+    st.title("🌍 Hometown Atlas")
     st.markdown("Your AI-powered travel companion.")
     st.divider()
 
@@ -63,7 +65,7 @@ with st.sidebar:
     query = st.text_area("What kind of journey?", "A quiet walk with lots of historical relevance", height=100, placeholder="e.g., 'A vibrant market tour'")
 
     st.subheader("2. Choose Your Destination")
-    selected_city = st.selectbox("Select City/Region:", ("Nsukka", "Enugu", "Addis Ababa", "Nairobi", "Lagos"))
+    selected_city = st.selectbox("Select City/Region:", ("Nsukka", "Enugu", "Addis Ababa", "Nairobi", "Ethiopia","Kenya"))
     
     poi_list = knowledge_base.get_pois_by_city(selected_city)
     
@@ -134,7 +136,7 @@ with st.sidebar:
 
 # --- 6. MAIN PANEL (MAP AND STORY) ---
 # (This part of the code is correct and does not need changes)
-st.subheader("Interactive Map")
+st.subheader(" HomeTown Atlas Interactive Map")
 if st.session_state.start_location:
     st.success(f"Start Location Set: {st.session_state.start_location['lat']:.4f}, {st.session_state.start_location['lng']:.4f}")
 else:
@@ -150,7 +152,7 @@ if st.session_state.journey_created and st.session_state.route_data:
     points = st.session_state.route_data['points']
     swapped_points = [(p[1], p[0]) for p in points]
     folium.PolyLine(swapped_points, color="red", weight=5, opacity=0.8).add_to(m)
-    folium.Marker(swapped_points[-1], popup="Destination", tooltip="Destination", icon=folium.Icon(color="red", icon="flag")).add_to(m)
+    folium.Marker(swapped_points[-1], popup= destination_name, tooltip=destination_name, icon=folium.Icon(color="red", icon="flag")).add_to(m)
     m.fit_bounds(swapped_points)
 
 map_data = st_folium(m, width='100%', height=450)
@@ -162,7 +164,7 @@ if map_data and map_data.get("last_clicked"):
 
 st.divider()
 
-st.subheader("Your Generated Journey")
+st.subheader("Your Journey")
 if st.session_state.journey_created and st.session_state.narrative:
     narrative = st.session_state.narrative
     route_data = st.session_state.route_data
