@@ -44,14 +44,12 @@ def get_route_from_ors(start_lon: float, start_lat: float, end_lon: float, end_l
 
 # --- Narrative and Chat Generation Functions ---
 
-def generate_narrative_with_rag(request: models.JourneyRequest, destination_name: str) -> models.JourneyNarrative:
+def generate_narrative_with_rag(llm, embedding_model, parser, request: models.JourneyRequest, destination_name: str) -> models.JourneyNarrative:
     """
     Generates the primary, personalized journey narrative using a RAG model.
     This function is for the initial journey creation.
     """
-    llm = st.session_state.llm
-    embedding_model = st.session_state.embedding_model
-    parser = st.session_state.parser
+    # The models are now passed in directly, not called from session_state.
 
     # Fetch user preferences to tailor the narrative
     user_prefs = knowledge_base.get_user_preferences(request.user_id)
@@ -86,12 +84,12 @@ def generate_narrative_with_rag(request: models.JourneyRequest, destination_name
     return parser.parse(ai_response.content)
 
 
-def generate_chat_response(user_id: str, city: str, destination_name: str, journey_narrative: models.JourneyNarrative, conversation_history: str) -> str:
+def generate_chat_response(llm, user_id: str, city: str, destination_name: str, journey_narrative: models.JourneyNarrative, conversation_history: str) -> str:
     """
     Generates a conversational response for the 'Talk with the Guide' tab.
     This function uses the context of the already-created journey.
     """
-    llm = st.session_state.llm
+    # The llm model is now passed in directly.
     user_prefs = knowledge_base.get_user_preferences(user_id)
     preferences_text = f"User Likes: {user_prefs.get('likes', [])}, User Dislikes: {user_prefs.get('dislikes', [])}."
 
@@ -119,9 +117,9 @@ def generate_chat_response(user_id: str, city: str, destination_name: str, journ
     return ai_response.content
 
 
-def reflect_and_update_preferences(request: models.ReflectionRequest):
+def reflect_and_update_preferences(llm, request: models.ReflectionRequest):
     """Uses an LLM to analyze user feedback and update their preference profile."""
-    llm = st.session_state.llm
+    # The llm model is now passed in directly.
     current_prefs = knowledge_base.get_user_preferences(request.user_id)
 
     reflection_prompt = f"""
