@@ -7,7 +7,7 @@ from streamlit_js_eval import get_geolocation
 import numpy as np
 from dotenv import load_dotenv
 import traceback # <-- Import for detailed error logging
-
+import os
 # Import necessary components for initialization
 from sentence_transformers import SentenceTransformer
 from langchain_google_genai import ChatGoogleGenerativeAI
