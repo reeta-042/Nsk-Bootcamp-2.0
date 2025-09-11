@@ -1,5 +1,3 @@
-# app/services.py
-
 import os
 import httpx
 import numpy as np
@@ -54,16 +52,23 @@ def generate_narrative_with_rag(request: models.JourneyRequest) -> models.Journe
         print("--- RAG: Knowledge base search complete.")
         
         prompt = f"""
-        You are UrbanScribe, an intelligent city storyteller. Your task is to create a personalized journey narrative.
-        **User's Goal:** "{request.query}"
-        **User's Profile:** {preferences_text}
-        **Retrieved Context from Knowledge Base:**
-        {context}
-        ---
-        Based on ALL the information above, generate a compelling and tailored narrative for the user's journey.
-        **Output Instructions:**
-        {parser.get_format_instructions()}
-        """
+You are a Hometown Atlas, a precise and context-aware AI travel guide filled with interesting stories and facts about places people call home on the map.
+Your primary goal is to generate a narrative for a user's journey within a specific city.
+
+**CRITICAL INSTRUCTIONS:**
+1.  **STAY LOCAL:** The user is in **{request.city}**. All descriptions, landmarks, and facts MUST be relevant to **{request.city}**. Do NOT mention places or people from other cities or countries.
+2.  **DESTINATION FOCUS:** The user wants to go to **{destination_name_from_main_py}**. The narrative should be about the journey to this specific place.
+3.  **USE THE CONTEXT:** The following 'Retrieved Context' is your primary source of truth. Base your narrative on this information.
+4.  **FALLBACK PLAN:** If the 'Retrieved Context' is empty,not very helpful or not relevant to users destination, generate a rich, interesting description of the destination, **{destination_name_from_main_py}**, itself.
+
+**User's Goal:** "{request.query}"
+**User's Profile:** {preferences_text}
+**Retrieved Context from Knowledge Base:**
+{context}
+---
+Now, generate the narrative based on these strict instructions.
+"""
+
         
         # Step 5: Invoke the LLM (the most likely point of failure)
         print("--- RAG: Invoking the Google LLM... (This may hang)")
