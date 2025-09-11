@@ -1,6 +1,6 @@
 # 🌍 Hometown Atlas
 
-Hometown Atlas is an intelligent, AI-powered travel companion that creates personalized walking tours and narratives for any destination. Built with Streamlit and powered by Google's Gemini Pro, it's designed to help users discover the hidden gems and stories of their city.
+Hometown Atlas is an intelligent, AI-powered travel companion that creates personalized walking tours and narratives for any destination. Built with Streamlit and powered by Google's Gemini 2.5 Pro, it's designed to help users discover the hidden gems and stories of their city.
 
 ![Hometown Atlas Screenshot](https://nsk-bootcamp-tourism.streamlit.app/)
 
@@ -22,7 +22,7 @@ Hometown Atlas is an intelligent, AI-powered travel companion that creates perso
 
 *   **Frontend:** [Streamlit](https://streamlit.io/) - For the interactive web application UI.
 *   **Backend & Orchestration:** Python
-*   **LLM (Narrative & Chat):** [Google Gemini Pro](https://deepmind.google/technologies/gemini/) via `langchain-google-genai`.
+*   **LLM (Narrative & Chat):** [Google Gemini 2.5 Pro](https://deepmind.google/technologies/gemini/) via `langchain-google-genai`.
 *   **Routing:** [OpenRouteService](https://openrouteservice.org/) - For generating pedestrian routes.
 *   **Database:** [MongoDB](https://www.mongodb.com/) - For storing Point of Interest (POI) data and user preferences.
 *   **Vector Search (RAG):** [FAISS](https://faiss.ai/) - For efficient similarity search on our knowledge base.
